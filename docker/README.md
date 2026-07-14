@@ -26,19 +26,62 @@ The Docker Compose configuration includes all the necessary services to run Dayt
 
 ## Quick Start
 
-1. Start all services (from the root of the Daytona repo):
+1. Create the secrets file `docker/.env` (gitignored). The compose file contains only
+   `${VAR}` references, no secret values. Required keys: `ENCRYPTION_KEY`,
+   `ENCRYPTION_SALT`, `DB_PASSWORD`, `REGISTRY_ADMIN`, `REGISTRY_PASSWORD`,
+   `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `PROXY_API_KEY`, `DAYTONA_RUNNER_TOKEN`,
+   `SSH_GATEWAY_API_KEY`, `OTEL_COLLECTOR_API_KEY`, `HEALTH_CHECK_API_KEY`,
+   `PGADMIN_DEFAULT_PASSWORD`, `SSH_GATEWAY_HOST`, `SSH_GATEWAY_PUBLIC_KEY`,
+   `SSH_PRIVATE_KEY`, `SSH_HOST_KEY`.
 
    ```bash
-   docker compose -f docker/docker-compose.yaml up -d
+   # generate values:
+   openssl rand -hex 32                                   # random secrets / passwords
+   ssh-keygen -t rsa -b 4096 -N '' -f gw                  # gateway auth pair
+   ssh-keygen -t rsa -b 4096 -N '' -f host                # host key
+   base64 -w0 gw   # SSH_PRIVATE_KEY   | base64 -w0 gw.pub  # SSH_GATEWAY_PUBLIC_KEY
+   base64 -w0 host # SSH_HOST_KEY
    ```
 
-2. Access the services:
+   If you set/change `DB_PASSWORD`, also write `docker/pgadmin4/pgpass` (gitignored) as
+   `db:5432:*:user:<DB_PASSWORD>` so pgAdmin can auto-connect.
+
+2. Start all services (from the root of the Daytona repo). The `--env-file` flag is
+   required because the env file lives in `docker/`, not the working directory:
+
+   ```bash
+   docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d
+   ```
+
+3. Access the services:
    - Daytona Dashboard: http://localhost:3000
      - Access Credentials: dev@daytona.io `password`
      - Make sure that the default snapshot is active at http://localhost:3000/dashboard/snapshots
    - PgAdmin: http://localhost:5050
    - Registry UI: http://localhost:5100
-   - MinIO Console: http://localhost:9001 (minioadmin / minioadmin)
+   - MinIO Console: http://localhost:9001 (credentials = `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env`)
+
+## Reverse proxy / TLS (self-hosting)
+
+TLS is terminated by an **external** load balancer / reverse proxy; no proxy runs in
+this compose stack. The containers speak plain HTTP on their published ports — the
+external proxy does HTTPS and forwards. `PROXY_PROTOCOL=https` tells the api/proxy to
+advertise `https` in generated URLs and set secure cookies, so the external proxy MUST
+forward `X-Forwarded-Proto: https`.
+
+Required routes (all HTTPS → HTTP upstreams):
+
+| Public host / path                                     | Upstream            |
+| ------------------------------------------------------ | ------------------- |
+| `dev-daytona.ideaboxai.com` (root, `/api`, `/dashboard`) | `api:3002` (host `:3002`)   |
+| `dev-daytona.ideaboxai.com/dex`                        | `dex:5556` (host `:5556`)   |
+| `proxy.dev-daytona.ideaboxai.com`                      | `proxy:4003` (host `:4003`) |
+| `*.proxy.dev-daytona.ideaboxai.com` (wildcard, sandbox previews) | `proxy:4003` (host `:4003`) |
+| TCP `:2222` (SSH gateway, no TLS)                      | `ssh-gateway:2222` (host `:2222`) |
+
+The wildcard `*.proxy.dev-daytona.ideaboxai.com` needs DNS + a wildcard TLS cert for
+sandbox preview URLs to resolve. Set `SSH_GATEWAY_HOST` in `docker/.env` to the public
+address sandboxes SSH into.
 
 ## DNS Setup for Proxy URLs
 
