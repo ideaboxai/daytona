@@ -1,0 +1,22 @@
+WRITTEN OFFER — AGPL-3.0 CORRESPONDING SOURCE
+
+The software deployed to __CLIENT__ includes Daytona (server components),
+which is licensed under the GNU Affero General Public License, version 3
+(AGPL-3.0). A copy of that license is included as LICENSE in the source archive.
+
+The complete Corresponding Source for the EXACT version running in your
+deployment is provided alongside this notice:
+
+  Source archive : __SOURCE_ARCHIVE__
+  Git tag        : __TAG__
+  Commit         : __COMMIT__
+  Delivered (UTC): __DATE__
+
+Your rights under AGPL-3.0 cover the Daytona server components only. You may
+use, study, modify, and redistribute those components under the same license.
+
+Scope note: this offer applies solely to the AGPL-3.0 Daytona server. It does
+NOT cover the __VENDOR__ application or any other separately-licensed component
+deployed with it; those are provided under their own terms.
+
+For questions about this notice, contact: __CONTACT__

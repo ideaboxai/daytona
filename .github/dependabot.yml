@@ -25,3 +25,44 @@ updates:
           - "*"
     commit-message:
       prefix: "chore(deps)"
+
+  # Fork maintenance: upstream stopped applying dependency updates (repo frozen
+  # 2026-06-11). We now own security patching for Go + JS deps. See FORK.md.
+  - package-ecosystem: gomod
+    directories:
+      - "/**/*"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      go-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"

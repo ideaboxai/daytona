@@ -60,6 +60,15 @@ vitest.config.*.timestamp*
 .tmp/
 .env.local
 
+# Docker compose self-hosting secrets (real values, never commit)
+docker/.env
+docker/pgadmin4/pgpass
+# Real per-environment Dex config (holds our domains + admin password hash).
+# The tracked docker/dex/config.yaml stays as the localhost template only.
+docker/dex/config.yaml.server
+docker/dex/config.*.yaml
+docker/dex/config.yaml.local
+
 # Python package metadata
 *.egg-info/
 *.egg
