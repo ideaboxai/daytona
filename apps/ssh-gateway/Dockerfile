@@ -38,11 +38,17 @@ RUN yarn nx build ssh-gateway --configuration=production --nxBail=true
 
 FROM alpine:3.22 AS ssh-gateway
 
+# Non-root runtime user (alpine has none by default). The gateway binds 2222
+# (>1024) and reads its keys from env, so it needs no root privileges.
+RUN adduser -D -H -u 10001 appuser
+
 WORKDIR /usr/local/bin
 
 COPY --from=build /daytona/dist/apps/ssh-gateway daytona-ssh-gateway
 
 RUN chmod +x daytona-ssh-gateway
+
+USER appuser
 
 EXPOSE 2222
 

@@ -1,0 +1,41 @@
+# Container hardening override — apply LAST so it wins.
+#
+#   docker compose --env-file docker/.env \
+#     -f docker/docker-compose.yaml \
+#     -f docker/docker-compose.registry.override.yaml \
+#     -f docker/docker-compose.hardening.override.yaml up -d
+#
+# What this does:
+#   - no-new-privileges: blocks privilege escalation via setuid binaries on every
+#     service EXCEPT the runner (which needs escalation for Docker-in-Docker).
+#
+# Non-root USER for OUR images (api, proxy, ssh-gateway) is set in their
+# Dockerfiles and takes effect when you build via scripts/fork/build-push.sh.
+# The runner stays root by design (privileged DinD hosts the sandboxes).
+#
+# Third-party images already run their main process as non-root internally
+# (postgres->postgres, redis->redis, dex->1001, minio, otel-collector), so no
+# `user:` override is forced here — that would fight their entrypoints and risk
+# breaking volume permissions. no-new-privileges is the safe blanket hardening.
+
+name: daytona
+
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  api:          { <<: *hardened }
+  proxy:        { <<: *hardened }
+  ssh-gateway:  { <<: *hardened }
+  dex:          { <<: *hardened }
+  db:           { <<: *hardened }
+  pgadmin:      { <<: *hardened }
+  redis:        { <<: *hardened }
+  registry-ui:  { <<: *hardened }
+  registry:     { <<: *hardened }
+  maildev:      { <<: *hardened }
+  minio:        { <<: *hardened }
+  jaeger:       { <<: *hardened }
+  otel-collector: { <<: *hardened }
+  # runner: intentionally omitted — privileged DinD needs privilege escalation.

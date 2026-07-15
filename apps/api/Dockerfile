@@ -37,6 +37,10 @@ RUN VITE_API_URL=%DAYTONA_BASE_API_URL%/api yarn nx build dashboard --configurat
 ARG VERSION=0.0.1
 ENV VERSION=${VERSION}
 
+# Run as the non-root 'node' user (uid 1000, present in node:* images).
+# Build steps above run as root; only the runtime drops privileges.
+USER node
+
 HEALTHCHECK CMD [ "curl", "-f", "http://localhost:3000/api/config" ]
 
 ENTRYPOINT ["node", "dist/apps/api/main.js"]

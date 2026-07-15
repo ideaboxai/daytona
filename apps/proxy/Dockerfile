@@ -44,11 +44,16 @@ FROM alpine:3.22 AS proxy
 
 RUN apk add --no-cache curl
 
+# Non-root runtime user (alpine has none by default)
+RUN adduser -D -H -u 10001 appuser
+
 WORKDIR /usr/local/bin
 
 COPY --from=build /daytona/dist/apps/proxy daytona-proxy
 
 RUN chmod +x daytona-proxy
+
+USER appuser
 
 HEALTHCHECK CMD [ "curl", "-f", "http://localhost:4000/health" ]
 

@@ -55,6 +55,10 @@ ARG VERSION=0.0.1
 RUN --mount=type=cache,target=/root/.cache/go-build \
   SKIP_COMPUTER_USE_BUILD=true VERSION=$VERSION yarn nx build runner --configuration=production --nxBail=true
 
+# NOTE: the runner MUST run as root. It hosts the inner Docker-in-Docker daemon
+# that runs sandboxes (privileged + SYS_ADMIN + /dev/fuse in compose). A non-root
+# USER here would break sandbox creation. Isolation is enforced at the sandbox
+# boundary, not by dropping the runner's own privileges.
 FROM docker:28.2.2-dind-alpine3.22 AS runner
 
 RUN apk add --no-cache curl rsync
