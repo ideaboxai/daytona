@@ -108,6 +108,61 @@ still created and you hand over the link yourself. Signup does not need email:
 `SKIP_USER_EMAIL_VERIFICATION=true`. To enable, point `SMTP_HOST` at a real relay
 such as SES.
 
+## Fork images (ECR)
+
+Upstream `daytonaio/daytona` froze on 2026-06-11, so this fork builds its own
+service images and mirrors its third-party ones rather than depending on Docker
+Hub. All ten images live in ECR under one namespace.
+
+Set both — the shell var (the scripts read it directly; `--env-file` does not
+reach them) and `docker/.env` (compose reads it for the override):
+
+```bash
+export FORK_REGISTRY=120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core
+```
+
+`FORK_REGISTRY` **must include the namespace path**, not just the registry host —
+the scripts append `/<repo>` to it. Log in to the host only:
+
+```bash
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin 120354378950.dkr.ecr.us-east-1.amazonaws.com
+```
+
+Then:
+
+```bash
+./scripts/fork/build-push.sh          # our 4 services, built from source
+./scripts/fork/mirror-thirdparty.sh   # the 6 third-party images
+```
+
+Each writes a digest file under `dist/`. Paste those digests into
+`docker/docker-compose.registry.override.yaml` (copy it from the `.example`) and
+deploy with that override applied last so it wins:
+
+```bash
+docker compose --env-file docker/.env \
+  -f docker/docker-compose.yaml \
+  -f docker/docker-compose.registry.override.yaml \
+  -f docker/docker-compose.hardening.override.yaml up -d
+```
+
+Three things worth knowing:
+
+- **Architecture matters for `build-push.sh` only.** It compiles locally, so the
+  images are single-arch and must match the deploy target — an x86_64 image will
+  not run on Graviton, and you find out at deploy, not at build. It defaults to
+  `linux/amd64`; override with `TARGET_PLATFORM=linux/arm64`. Building a platform
+  other than the build machine's needs QEMU and is slow, so prefer building on
+  the target architecture. `mirror-thirdparty.sh` is immune — it copies full
+  manifest lists and keeps every architecture.
+- **Building does not need the datastores.** `build-push.sh` feeds placeholder
+  values for `DB_HOST`/`REDIS_HOST`/etc., so you can build and push before RDS or
+  ElastiCache exist. Those variables are only required at `up` time.
+- **ECR repository names are inconsistent on purpose.** Jaeger keeps its org
+  prefix (`jaegertracing/all-in-one`); dex, minio and otel dropped theirs. The
+  scripts' mappings match the real repositories — don't normalise them.
+
 ## Reverse proxy / TLS (self-hosting)
 
 TLS is terminated by an **external** load balancer / reverse proxy; no proxy runs in
