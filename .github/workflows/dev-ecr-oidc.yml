@@ -9,11 +9,11 @@ name: Build & Push Daytona Services to Dev ECR (OIDC)
 # rejects :latest and commit-hash-only tags. Bump VERSION to release a new tag.
 # A manual run may override it via the image_version input.
 #
-# ⚠ NOT YET ONBOARDED. Unlike ideaboxai-ui, none of this exists for this repo
-# (verified 2026-07-17: `daytona` has 0 environments, 0 variables, 0 runners):
-#   1. GitHub Environment `cicd` in THIS repo, with vars AWS_DEPLOY_ROLE_ARN,
-#      AWS_PLAN_ROLE_ARN, ECR_ACCOUNT_ID, AWS_REGION. Copy them verbatim from
-#      ideaboxai-ui — it is the same account (120354378950) and region (us-east-1).
+# ⚠ PARTIALLY ONBOARDED — do not run until items 2-4 are done (verified 2026-07-17):
+#   1. DONE. GitHub Environment `cicd` exists in this repo with vars
+#      AWS_DEPLOY_ROLE_ARN, AWS_PLAN_ROLE_ARN, ECR_ACCOUNT_ID, AWS_REGION,
+#      copied verbatim from ideaboxai-ui — same account (120354378950) and
+#      region (us-east-1).
 #   2. IAM trust on github-actions-cicd-ideaboxai-{deploy,plan} extended to
 #      repo:ideaboxai/daytona.
 #   3. Those roles permitted to push to ideaboxai-platform-core/*. Every other
