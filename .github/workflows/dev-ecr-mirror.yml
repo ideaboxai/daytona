@@ -1,0 +1,105 @@
+name: Mirror Third-Party Images to Dev ECR (OIDC)
+
+# Mirrors the six third-party images the Daytona stack depends on into
+# ideaboxai-platform-core/*, so a Docker Hub outage — or an upstream tag being
+# moved or deleted — cannot block a deploy. Upstream daytonaio/daytona froze on
+# 2026-06-11, which is why this fork owns its whole image supply chain.
+#
+# Manual-only by design: these images change a couple of times a year, when
+# someone bumps a version in docker/docker-compose.yaml. Wiring them to `push`
+# would re-mirror six unchanged images on every commit.
+#
+# Uses `docker buildx imagetools create`, which copies full manifest lists
+# registry-to-registry without pulling, preserving every architecture. A
+# pull/tag/push loop would silently flatten each image to the runner's arch.
+# This is why the mirror — unlike dev-ecr-oidc.yml — is arch-agnostic.
+#
+# Onboarding prerequisites are identical to dev-ecr-oidc.yml; see its header.
+#
+# Keep IMAGES in sync with docker/docker-compose.yaml. The script of record is
+# scripts/fork/mirror-thirdparty.sh — it does the same thing for local runs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Resolve and print what would be mirrored, without pushing."
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write       # required for OIDC
+  contents: read
+
+jobs:
+  mirror:
+    environment: cicd
+    # Self-hosted runner inside the cluster (private ECR is not reachable from public runners).
+    runs-on: ideaboxai-deploy-small
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC, no static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # main → deploy role (ECR push); other branches → plan role (read-only)
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Mirror images
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          PUSH_ALLOWED: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          set -euo pipefail
+          FORK_REGISTRY="${ECR_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ideaboxai-platform-core"
+
+          # upstream image ref | our ECR repo name
+          #
+          # Repo names match the ECR repositories exactly and are deliberately NOT
+          # consistent — jaeger keeps its org prefix while dex, minio and otel
+          # dropped theirs. Do not tidy these into a pattern; pushes would land in
+          # repositories that do not exist.
+          IMAGES=(
+            "dexidp/dex:v2.42.0|dex"
+            "joxit/docker-registry-ui:main|docker-registry-ui"
+            "registry:2.8.2|registry"
+            "jaegertracing/all-in-one:1.67.0|jaegertracing/all-in-one"
+            "minio/minio:latest|minio"
+            "otel/opentelemetry-collector-contrib:0.138.0|opentelemetry-collector-contrib"
+          )
+
+          for entry in "${IMAGES[@]}"; do
+            src="${entry%%|*}"
+            repo="${entry##*|}"
+            tag="${src##*:}"
+            dst="${FORK_REGISTRY}/${repo}:${tag}"
+
+            if [ "$DRY_RUN" = "true" ] || [ "$PUSH_ALLOWED" != "true" ]; then
+              echo "would mirror: $src -> $dst"
+              continue
+            fi
+
+            echo ">> $src -> $dst"
+            docker buildx imagetools create --tag "$dst" "$src"
+
+            # Read the digest back from the registry — authoritative, and it is what
+            # docker/docker-compose.registry.override.yaml pins.
+            digest="$(docker buildx imagetools inspect "$dst" --format '{{.Manifest.Digest}}')"
+            {
+              echo "### ${repo}"
+              echo '```'
+              echo "${FORK_REGISTRY}/${repo}@${digest}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          if [ "$PUSH_ALLOWED" != "true" ]; then
+            echo "::notice::Not on main — plan role is read-only, nothing pushed."
+          fi

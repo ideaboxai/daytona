@@ -1,0 +1,177 @@
+name: Build & Push Daytona Services to Dev ECR (OIDC)
+
+# Pushes the four Daytona service images to ideaboxai-platform-core/daytona-* via
+# GitHub OIDC — no static AWS keys. Modeled on ideaboxai-ui's dev-ecr-oidc.yml:
+# same `cicd` environment, same deploy-vs-plan role split, same semver rule.
+#
+# Version: the image tag comes from the repo-root VERSION file (single source of
+# truth) and must be semver MAJOR.MINOR.PATCH — the cluster's Kyverno policy
+# rejects :latest and commit-hash-only tags. Bump VERSION to release a new tag.
+# A manual run may override it via the image_version input.
+#
+# ⚠ NOT YET ONBOARDED. Unlike ideaboxai-ui, none of this exists for this repo
+# (verified 2026-07-17: `daytona` has 0 environments, 0 variables, 0 runners):
+#   1. GitHub Environment `cicd` in THIS repo, with vars AWS_DEPLOY_ROLE_ARN,
+#      AWS_PLAN_ROLE_ARN, ECR_ACCOUNT_ID, AWS_REGION. Copy them verbatim from
+#      ideaboxai-ui — it is the same account (120354378950) and region (us-east-1).
+#   2. IAM trust on github-actions-cicd-ideaboxai-{deploy,plan} extended to
+#      repo:ideaboxai/daytona.
+#   3. Those roles permitted to push to ideaboxai-platform-core/*. Every other
+#      repo pushes to ideaboxai-dev/*, so if the policy is resource-scoped by
+#      prefix this namespace is NOT covered and pushes will fail with AccessDenied
+#      even once trust is extended. Worth checking explicitly — it is the failure
+#      that looks like "trust is broken" but isn't.
+#   4. `daytona` granted access to the ideaboxai-deploy-small runner group.
+# Anusha set up the ui / platform-services equivalents.
+#
+# ARCHITECTURE: single-arch, matching the runner (amd64). The EC2 deploy target
+# must match it — an amd64 image will not run on Graviton. For arm64, add a
+# matrix leg pinned to an arm64 self-hosted runner and merge the two into one
+# manifest with `docker buildx imagetools create`; upstream's release.yaml
+# (docker_build + docker_push_manifest) is the reference for that shape.
+#
+# The six third-party images are handled separately by dev-ecr-mirror.yml — they
+# change a couple of times a year, so rebuilding them on every commit is waste.
+#
+# To PUSH, run from `main` (deploy role). Other branches assume the read-only
+# plan role and build only, which makes this safe to test from a branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_version:
+        description: "Override the VERSION file tag (must be MAJOR.MINOR.PATCH). Leave blank to use VERSION."
+        type: string
+        default: ""
+  # push:
+  #   branches: [main]   # enable after the first manual run is green
+
+permissions:
+  id-token: write       # required for OIDC
+  contents: read
+
+jobs:
+  build-and-push:
+    # `cicd` environment ties this job to the OIDC trust policy (repo + environment).
+    environment: cicd
+    # Self-hosted runner inside the cluster (private ECR is not reachable from public runners).
+    runs-on: ideaboxai-deploy-small
+    strategy:
+      # One service failing should not cancel the other three — a partial push is
+      # recoverable (digests are per-image), a cancelled run tells you less.
+      fail-fast: false
+      matrix:
+        include:
+          # `target` is the Dockerfile build stage, mirroring
+          # docker/docker-compose.build.override.yaml. Note api's stage is
+          # `daytona`, not `api` — the one case where it doesn't match the name.
+          - service: api
+            target: daytona
+            version_arg: true
+          - service: proxy
+            target: proxy
+            version_arg: true
+          - service: runner
+            target: runner
+            version_arg: true
+          - service: ssh-gateway
+            target: ssh-gateway
+            version_arg: false   # its Dockerfile declares no ARG VERSION
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
+      ECR_REPOSITORY: ideaboxai-platform-core/daytona-${{ matrix.service }}
+      COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve & validate version
+        id: ver
+        run: |
+          # Override input wins; otherwise the repo-root VERSION file is the source of truth.
+          if [ -n "${{ inputs.image_version }}" ]; then
+            V="${{ inputs.image_version }}"
+            echo "Using image_version override: $V"
+          else
+            if [ ! -f VERSION ]; then echo "::error::VERSION file missing at repo root"; exit 1; fi
+            V="$(tr -d '[:space:]' < VERSION)"
+            echo "Using VERSION file: $V"
+          fi
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version '$V' is not valid semver (MAJOR.MINOR.PATCH)"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      # apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64` — a prebuilt,
+      # gitignored artifact that the Docker build cannot produce itself. Upstream
+      # builds it in a separate job and passes it as an artifact; here only the
+      # runner leg needs it, so it is built in place rather than fanned out.
+      #
+      # It is amd64-only by design (the binary ships into sandboxes, it does not run
+      # in the runner image) — upstream feeds the same amd64 artifact to both its
+      # amd64 and arm64 image builds, so this stays correct if an arm64 leg is added.
+      - uses: actions/setup-go@v5
+        if: matrix.service == 'runner'
+        with:
+          go-version-file: go.work
+
+      - name: Build computer-use (runner image dependency)
+        if: matrix.service == 'runner'
+        run: |
+          # Invoked directly rather than through `nx run computer-use:build-amd64`:
+          # the nx target only shells out to this script, and going direct keeps
+          # node/yarn out of the job entirely. On x86_64 it is a native go build.
+          ./hack/computer-use/build-computer-use-amd64.sh
+          test -f dist/libs/computer-use-amd64 || { echo "::error::computer-use build produced no artifact"; exit 1; }
+
+      - name: Configure AWS credentials (OIDC, no static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # main → deploy role (ECR push); other branches → plan role (read-only)
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          IMAGE_BASE="${ECR_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+          ARGS=()
+          if [ "${{ matrix.version_arg }}" = "true" ]; then
+            ARGS+=(--build-arg "VERSION=${IMAGE_VERSION}")
+          fi
+          docker build \
+            -t "${IMAGE_BASE}:${IMAGE_VERSION}" \
+            -t "${IMAGE_BASE}:${IMAGE_VERSION}-${COMMIT_SHA::7}" \
+            --target "${{ matrix.target }}" \
+            "${ARGS[@]}" \
+            -f "apps/${{ matrix.service }}/Dockerfile" .
+          echo "IMAGE_BASE=${IMAGE_BASE}" >> "$GITHUB_ENV"
+
+      - name: Push image (main only — plan role is read-only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          docker push "${IMAGE_BASE}:${IMAGE_VERSION}"
+          docker push "${IMAGE_BASE}:${IMAGE_VERSION}-${COMMIT_SHA::7}"
+          echo "Pushed ${IMAGE_BASE}:${IMAGE_VERSION} (+ ${IMAGE_VERSION}-${COMMIT_SHA::7})"
+
+      # The digest is what docker/docker-compose.registry.override.yaml pins, and
+      # reading it back from the registry is the only authoritative source.
+      - name: Report immutable digest
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE_BASE}:${IMAGE_VERSION}" --format '{{.Manifest.Digest}}')"
+          echo "${ECR_REPOSITORY}@${DIGEST}"
+          {
+            echo "### daytona-${{ matrix.service }}"
+            echo '```'
+            echo "${IMAGE_BASE}@${DIGEST}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

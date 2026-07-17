@@ -96,6 +96,22 @@ if command -v aws >/dev/null 2>&1 && [[ "$FORK_REGISTRY" == *.dkr.ecr.*.amazonaw
   echo ">> Preflight OK: all ${#SERVICES[@]} ECR repositories exist in $REGION"
 fi
 
+# apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64`, a prebuilt
+# artifact that is gitignored and NOT produced by `compose build` — upstream's CI
+# builds it in a separate job and passes it between jobs as an artifact. Without
+# it the runner build dies on a missing COPY source, so build it here.
+#
+# It is amd64-only by design: the binary ships into sandboxes rather than running
+# in the runner image, and upstream feeds the same amd64 artifact to both its
+# amd64 and arm64 image builds. So this does not vary with TARGET_PLATFORM.
+# Called directly rather than via `nx run computer-use:build-amd64` — the nx target
+# only shells out to this script, and going direct avoids needing node_modules.
+# On x86_64 it is a native `go build`; on other hosts the script cross-builds.
+if [[ ! -f dist/libs/computer-use-amd64 ]]; then
+  echo ">> Building computer-use (prebuilt dependency of the runner image)"
+  ./hack/computer-use/build-computer-use-amd64.sh
+fi
+
 echo ">> Building service images from source (tag: $TAG, platform: $TARGET_PLATFORM)"
 "${COMPOSE[@]}" build api proxy runner ssh-gateway
 
