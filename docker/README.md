@@ -15,27 +15,37 @@ The Docker Compose configuration includes all the necessary services to run Dayt
 - **Proxy**: Request proxy service
 - **Runner**: Service that hosts the Daytona Runner
 - **SSH Gateway**: Service that handles sandbox SSH access
-- **Database**: PostgreSQL database for data persistence
-- **Redis**: In-memory data store for caching and sessions
 - **Dex**: OIDC authentication provider
 - **Registry**: Docker image registry with web UI
 - **MinIO**: S3-compatible object storage
-- **MailDev**: Email testing service
 - **Jaeger**: Distributed tracing
-- **PgAdmin**: Database administration interface
+
+**Postgres and Redis are external managed services** (RDS / ElastiCache) and do
+not run in this stack — set their endpoints in `docker/.env`. pgAdmin and MailDev
+were dev-only conveniences and have been removed.
+
+Two constraints on the external backends, both enforced by the code rather than
+by choice:
+
+- **Redis Cluster is not supported.** The proxy uses go-redis `*redis.Client`
+  (standalone — `libs/common-go/pkg/cache/redis_cache.go`) and the api uses
+  BullMQ. Use a cluster-mode **disabled** instance, or a single primary endpoint.
+- **Redis logical DB 0 only.** There is no `REDIS_DB` setting. Daytona writes
+  `runner:jobs:*`, `sandbox:activity` and BullMQ queues to DB 0, so a co-tenant
+  app issuing `FLUSHDB` would drop its job queues. Prefer a dedicated instance.
 
 ## Quick Start
 
-1. Create the secrets file `docker/.env` (gitignored). The compose file contains only
-   `${VAR}` references, no secret values. Required keys: `ENCRYPTION_KEY`,
-   `ENCRYPTION_SALT`, `DB_PASSWORD`, `REGISTRY_ADMIN`, `REGISTRY_PASSWORD`,
-   `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `PROXY_API_KEY`, `DAYTONA_RUNNER_TOKEN`,
-   `SSH_GATEWAY_API_KEY`, `OTEL_COLLECTOR_API_KEY`, `HEALTH_CHECK_API_KEY`,
-   `PGADMIN_DEFAULT_PASSWORD`, `SSH_GATEWAY_HOST`, `SSH_GATEWAY_PUBLIC_KEY`,
-   `SSH_PRIVATE_KEY`, `SSH_HOST_KEY`.
+1. Create the secrets file `docker/.env` (gitignored) from the template. The compose
+   file contains only `${VAR}` references, no secret values:
 
    ```bash
-   # generate values:
+   cp docker/.env.example docker/.env
+   ```
+
+   `docker/.env.example` lists every key with notes. Generate values with:
+
+   ```bash
    openssl rand -hex 32                                   # random secrets / passwords
    ssh-keygen -t rsa -b 4096 -N '' -f gw                  # gateway auth pair
    ssh-keygen -t rsa -b 4096 -N '' -f host                # host key
@@ -43,23 +53,60 @@ The Docker Compose configuration includes all the necessary services to run Dayt
    base64 -w0 host # SSH_HOST_KEY
    ```
 
-   If you set/change `DB_PASSWORD`, also write `docker/pgadmin4/pgpass` (gitignored) as
-   `db:5432:*:user:<DB_PASSWORD>` so pgAdmin can auto-connect.
+   `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD` and `REDIS_HOST` have no defaults —
+   compose fails with a named error if any is missing, rather than starting a
+   half-configured stack.
 
-2. Start all services (from the root of the Daytona repo). The `--env-file` flag is
+2. Create Daytona's database. It runs TypeORM migrations on boot
+   (`RUN_MIGRATIONS=true`), so it needs its own database — sharing a Postgres
+   *instance* is fine, sharing a *database* is not:
+
+   ```sql
+   CREATE DATABASE daytona;
+   CREATE USER daytona WITH PASSWORD '...';
+   GRANT ALL PRIVILEGES ON DATABASE daytona TO daytona;
+   ```
+
+3. Download the RDS CA bundle (skip if `DB_TLS_ENABLED=false`). RDS serves a cert
+   from Amazon's private RDS CA, which Node does not trust by default; the api
+   mounts this bundle and points `NODE_EXTRA_CA_CERTS` at it, so verification can
+   stay on. Without it, boot fails with `SELF_SIGNED_CERT_IN_CHAIN`:
+
+   ```bash
+   mkdir -p docker/certs
+   curl -fsSL https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem \
+     -o docker/certs/rds-ca-bundle.pem
+   ```
+
+   Match the region to your RDS instance. Do not "fix" a cert error by setting
+   `DB_TLS_REJECT_UNAUTHORIZED=false` — that accepts any certificate and defeats
+   the purpose of enabling TLS.
+
+4. Start all services (from the root of the Daytona repo). The `--env-file` flag is
    required because the env file lives in `docker/`, not the working directory:
 
    ```bash
    docker compose --env-file docker/.env -f docker/docker-compose.yaml up -d
    ```
 
-3. Access the services:
+5. Access the services:
    - Daytona Dashboard: http://localhost:3000
      - Access Credentials: dev@daytona.io `password`
      - Make sure that the default snapshot is active at http://localhost:3000/dashboard/snapshots
-   - PgAdmin: http://localhost:5050
    - Registry UI: http://localhost:5100
    - MinIO Console: http://localhost:9001 (credentials = `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env`)
+
+   Postgres is no longer reachable from the stack — use `psql` against `DB_HOST`
+   directly, or point a local client at the RDS endpoint.
+
+## Email
+
+`SMTP_HOST` is empty by default, which disables email. The only email Daytona
+sends is the organization invitation
+(`apps/api/src/email/services/email.service.ts`) — with SMTP off, invitations are
+still created and you hand over the link yourself. Signup does not need email:
+`SKIP_USER_EMAIL_VERIFICATION=true`. To enable, point `SMTP_HOST` at a real relay
+such as SES.
 
 ## Reverse proxy / TLS (self-hosting)
 

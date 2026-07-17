@@ -62,7 +62,8 @@ vitest.config.*.timestamp*
 
 # Docker compose self-hosting secrets (real values, never commit)
 docker/.env
-docker/pgadmin4/pgpass
+# RDS CA bundle — public, but region-specific and re-downloadable; see docker/README.md
+docker/certs/*.pem
 # Real per-environment Dex config (holds our domains + admin password hash).
 # The tracked docker/dex/config.yaml stays as the localhost template only.
 docker/dex/config.yaml.server
