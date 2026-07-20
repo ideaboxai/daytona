@@ -105,10 +105,29 @@ docker image inspect <ACCT>.../daytona-proxy:byoc-... --format '{{.Config.User}}
 
 ---
 
-## 4. Grant the client pull (we keep the images; they pull)
+## 4. Package the OFFLINE bundle (air-gapped clients — the default)
 
-Attach a cross-account pull policy to each of the 4 repos (revocable; never grants
-push):
+Air-gapped clients cannot pull from our registry, so ship the images **in the
+bundle**. After the from-source images exist (§3, present locally or pulled):
+
+```bash
+CLIENT=<slug> \
+FORK_REGISTRY=<acct>.dkr.ecr.<region>.amazonaws.com/<namespace> \
+FORK_TAG=byoc-<slug>-<date>-<sha> \
+BYOC_DIR=dist/byoc/<slug>/<date>-<sha> \
+  ./scripts/fork/byoc-bundle.sh
+```
+
+Produces one file — `dist/byoc/<slug>/daytona-<slug>-<tag>.bundle.tar.gz` — containing
+`images.tar` (all 10 images), the compose + configs, `install.sh`, and the AGPL source
+archive + written offer. The client extracts it and runs `./install.sh` (loads images,
+prompts ~6 settings, generates secrets, brings up). `docker save` captures the local
+platform only — build/pull for the client's arch (default amd64).
+
+## 4-alt. Grant the client pull (only if the client is INTERNET-CONNECTED)
+
+Skip this for air-gapped clients. If the client can reach our registry, grant their
+account cross-account pull instead of shipping `images.tar` (revocable; never push):
 ```bash
 for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway; do
   aws ecr set-repository-policy --region <region> \
@@ -198,17 +217,23 @@ previews (wildcard subdomains) are the one thing untested over IP.
 
 ---
 
-## 6. Deliver to the client (least friction — no clone)
+## 6. Deliver to the client
 
-Hand over three things:
-1. **Pull access** — confirm the §4 grant; give them the registry host, namespace, and
-   image tag (`byoc-<client>-<date>-<sha>`).
-2. **The bundle** — `daytona-src-<client>-<sha>.tar.gz` + `.sha256` + `WRITTEN_OFFER.txt`
-   (source archive doubles as the deploy files — `docker/` is inside it, incl.
-   `CLIENT-INSTALL.md`).
-3. **Point them at `docker/CLIENT-INSTALL.md`** inside the archive.
+**Air-gapped (default):** hand over the single offline bundle from §4 —
+`daytona-<client>-<tag>.bundle.tar.gz` + `.sha256`. It self-contains images, compose,
+installer, and the AGPL source + offer. Client experience:
 
-Their experience: untar → fill `.env` → `docker compose up`. No git, no build.
+```
+tar xzf daytona-<client>-<tag>.bundle.tar.gz && cd daytona-<client>-<tag>
+./install.sh          # loads images, ~6 prompts, generates secrets, brings up
+```
+No git, no build, no registry access. Point them at `README.txt` (entrypoint) and
+`docker/CLIENT-INSTALL.md` (detail), both inside the bundle.
+
+**Internet-connected (alt):** if you used §4-alt (pull grant), the client doesn't need
+`images.tar` — deliver the source archive + offer, give them the registry host /
+namespace / tag, and they pull at deploy. Same `install.sh`, but images come from the
+registry rather than `images.tar`.
 
 ---
 
