@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # Mirror the 4 prebuilt daytonaio/* images from Docker Hub into OUR registry.
 #
 # INTERIM MEASURE. Upstream froze on 2026-06-11 and has stated the repo is

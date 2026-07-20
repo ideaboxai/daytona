@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # Mirror the third-party images this stack depends on into OUR registry, so a
 # Docker Hub outage — or an upstream tag being moved or deleted — can't block a
 # fresh deploy. Complements build-push.sh, which covers the 4 images we build.
