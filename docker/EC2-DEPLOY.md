@@ -61,13 +61,21 @@ a test; mirror them later for full Hub independence.
 ## Steps (on the EC2)
 
 **1. Get the `docker/` dir on the box.** No full clone needed — there's no build,
-images come from the registry. Grab only `docker/`:
+images come from the registry. The box only needs `docker/`.
+
+This repo is **private**, so the box has no GitHub access by default. Simplest — copy
+`docker/` from a machine that already has the repo (no GitHub creds on the box):
 
 ```bash
-# sparse checkout (no source, no history blobs):
-git clone --filter=blob:none --sparse https://github.com/ideaboxai/daytona.git
+scp -r docker <user>@<host>:~/
+```
+
+Only if the box *does* have GitHub auth (SSH deploy key or a PAT) can you sparse-checkout
+instead:
+
+```bash
+git clone --filter=blob:none --sparse git@github.com:ideaboxai/daytona.git
 cd daytona && git sparse-checkout set docker
-# — or just copy it from your machine:  scp -r docker <user>@<host>:~/
 ```
 
 **2. Fill `docker/.env`** — copy from `.env.example`, then add:
