@@ -1,0 +1,41 @@
+# EC2 single-node HTTP deploy override — TESTING ONLY, no TLS. See EC2-DEPLOY.md.
+#
+# Repoints the 4 service images to ECR and rewrites the public URLs to the EC2 IP.
+# Requires FORK_REGISTRY, FORK_TAG, EC2_HOST (+ prod DB/Redis vars) in docker/.env,
+# and docker/dex/config.ec2.yaml generated per EC2-DEPLOY.md.
+#
+#   docker compose --env-file docker/.env \
+#     -f docker/docker-compose.yaml \
+#     -f docker/docker-compose.ec2-http.override.yaml up -d
+
+name: daytona
+
+services:
+  api:
+    image: ${FORK_REGISTRY}/daytona-api:${FORK_TAG}
+    environment:
+      - PROXY_PROTOCOL=http
+      - PUBLIC_OIDC_DOMAIN=http://${EC2_HOST}:5556/dex
+      - DASHBOARD_URL=http://${EC2_HOST}:3002/dashboard
+      - DASHBOARD_BASE_API_URL=http://${EC2_HOST}:3002
+      - PROXY_DOMAIN=${EC2_HOST}:4003
+      - PROXY_TEMPLATE_URL=http://{{PORT}}-{{sandboxId}}.${EC2_HOST}:4003
+
+  proxy:
+    image: ${FORK_REGISTRY}/daytona-proxy:${FORK_TAG}
+    environment:
+      - PROXY_PROTOCOL=http
+      - OIDC_PUBLIC_DOMAIN=http://${EC2_HOST}:5556/dex
+
+  runner:
+    image: ${FORK_REGISTRY}/daytona-runner:${FORK_TAG}
+
+  ssh-gateway:
+    image: ${FORK_REGISTRY}/daytona-ssh-gateway:${FORK_TAG}
+
+  dex:
+    volumes: !reset
+      - ./dex/config.ec2.yaml:/etc/dex/config.yaml
+      - dex_db:/var/dex
+    healthcheck:
+      disable: true
