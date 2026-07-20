@@ -144,6 +144,39 @@ dist/byoc/<client>/<date>-<sha>/WRITTEN_OFFER.txt                   # AGPL §6 n
 `BYOC_LEDGER.md` is your compliance paper trail — commit it after each run.
 `dist/` is gitignored, so the client source bundles never enter git.
 
+### Granting the client pull access (our images stay in our registry)
+
+We keep the images in our ECR and grant the client's AWS account cross-account
+**pull** — they never get push, and we can revoke. Attach a repository policy to
+each of the four `daytona-*` repos (replace the client account id):
+
+```bash
+for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway; do
+  aws ecr set-repository-policy --region <region> \
+    --repository-name <namespace>/$repo \
+    --policy-text '{
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Sid": "AllowClientPull",
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::<CLIENT_ACCOUNT_ID>:root" },
+        "Action": [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+      }]
+    }'
+done
+```
+
+The client then authenticates with **their own** creds and pulls from our registry
+host (their `docker login` token identifies their principal; the repo policy above
+authorizes it). Their steps are in `docker/CLIENT-INSTALL.md`, which ships inside the
+source archive. Give them: the registry host, the namespace, and the image tag
+(`byoc-<client>-<date>-<sha>` — note `build-push.sh` sanitizes the `/` in the git
+tag to `-` for the Docker tag).
+
 > The client inherits AGPL rights on the **server** (use/modify/redistribute) —
 > that is expected and cannot be restricted. Your proprietary app is unaffected.
 > Paper the commercial terms with a lawyer; the source-handoff above satisfies the
