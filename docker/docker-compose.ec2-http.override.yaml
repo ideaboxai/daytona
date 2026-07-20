@@ -34,7 +34,9 @@ services:
     image: ${FORK_REGISTRY}/daytona-ssh-gateway:${FORK_TAG}
 
   dex:
-    volumes: !reset
+    # !override REPLACES the base volumes list (swap config.yaml -> config.ec2.yaml).
+    # NB: !reset would CLEAR the list and drop the config mount entirely.
+    volumes: !override
       - ./dex/config.ec2.yaml:/etc/dex/config.yaml
       - dex_db:/var/dex
     healthcheck:

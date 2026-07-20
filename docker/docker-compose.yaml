@@ -292,18 +292,15 @@ services:
       - MEMORY_MAX_TRACES=10000
       - OTEL_TRACES_SAMPLER=always_off
       - COLLECTOR_QUEUE_SIZE_MEMORY=128
-      - SPAN_STORAGE_TYPE=badger
-      - BADGER_EPHEMERAL=false
-      - BADGER_DIRECTORY_VALUE=/badger/data
-      - BADGER_DIRECTORY_KEY=/badger/key
-      - BADGER_SPAN_STORE_TTL=24h0m0s   
+      # In-memory span store. Badger-on-a-named-volume crash-loops: the volume is
+      # root-owned but jaeger runs as uid 10001 (EACCES on /badger). Traces are a
+      # live debugging aid here, not durable state, so memory is the right store.
+      - SPAN_STORAGE_TYPE=memory
     mem_limit: 1g
     mem_reservation: 512m
     restart: always
     ports:
       - 127.0.0.1:16686:16686
-    volumes:
-      - jaeger-badger:/badger
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.138.0
@@ -327,7 +324,6 @@ volumes:
   registry: {}
   minio_data: {}
   dex_db: {}
-  jaeger-badger: {}
 
 
 networks:

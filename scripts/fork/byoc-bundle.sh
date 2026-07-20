@@ -75,6 +75,21 @@ cp docker/docker-compose.yaml \
    "$STAGE/docker/"
 cp -r docker/dex docker/otel "$STAGE/docker/"
 
+# Postgres CA bundle — the api mounts docker/certs/rds-ca-bundle.pem for TLS.
+# Ship it so RDS+TLS works air-gapped (no fetch at deploy). Prefer a repo-provided
+# cert; else fetch Amazon's all-region RDS global bundle now (internet at pack time).
+mkdir -p "$STAGE/docker/certs"
+if [ -f docker/certs/rds-ca-bundle.pem ]; then
+  cp docker/certs/rds-ca-bundle.pem "$STAGE/docker/certs/"
+elif curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+       -o "$STAGE/docker/certs/rds-ca-bundle.pem"; then
+  echo "   shipped Amazon RDS global CA bundle"
+else
+  echo "!! could not obtain an RDS CA bundle; shipping empty placeholder."
+  echo "   Clients on RDS+TLS must supply docker/certs/rds-ca-bundle.pem themselves."
+  : > "$STAGE/docker/certs/rds-ca-bundle.pem"
+fi
+
 echo ">> Rendering install.sh"
 sed -e "s|__FORK_REGISTRY__|${FORK_REGISTRY}|g" \
     -e "s|__FORK_TAG__|${FORK_TAG}|g" \

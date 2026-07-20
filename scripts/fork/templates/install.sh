@@ -13,6 +13,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
+# DRY_RUN=1 → do everything (load images, write .env, gen secrets, render dex)
+# but validate the merged compose instead of starting it. For pre-delivery tests.
+DRY_RUN="${DRY_RUN:-0}"
+
 FORK_REGISTRY="__FORK_REGISTRY__"
 FORK_TAG="__FORK_TAG__"
 ENV="docker/.env"
@@ -100,6 +104,18 @@ sed -e "s#https://sandbox.ideaboxai.com/dex#http://$HOST:5556/dex#g" \
     -e "s#https://sandbox.ideaboxai.com#http://$HOST:3002#g" \
     docker/dex/config.yaml > docker/dex/config.ec2.yaml
 
+# --- 4b. Postgres CA bundle ------------------------------------------------
+# The api bind-mounts docker/certs/rds-ca-bundle.pem (NODE_EXTRA_CA_CERTS). If the
+# file is absent, Docker would mount an empty DIRECTORY there and Node ignores it.
+# Guarantee it's a real file so the mount is valid; the bundle ships the RDS CA.
+mkdir -p docker/certs
+[ -f docker/certs/rds-ca-bundle.pem ] || : > docker/certs/rds-ca-bundle.pem
+if [ "$DB_TLS" = "true" ] && [ ! -s docker/certs/rds-ca-bundle.pem ]; then
+  echo "!! DB TLS is on but docker/certs/rds-ca-bundle.pem is empty."
+  echo "   Put your Postgres CA there (for RDS it ships in this bundle), or answer"
+  echo "   DB TLS = false. Continuing — the api will fail TLS verify until fixed."
+fi
+
 # --- 5. Preconditions the client must meet --------------------------------
 cat <<EOF
 
@@ -111,6 +127,14 @@ Before continuing, confirm on your side:
   * Redis '$REDIS_HOST' is non-cluster (INFO cluster -> cluster_enabled:0)
   * /usr/bin/mount-s3 and /dev/fuse exist on this host (the runner needs them)
 EOF
+if [ "$DRY_RUN" = "1" ]; then
+  echo
+  echo ">> DRY_RUN=1 — validating merged compose (not starting)…"
+  "${COMPOSE[@]}" config -q && echo ">> compose config OK — .env + overrides resolve."
+  echo ">> Dry run done. Re-run without DRY_RUN to bring the stack up."
+  exit 0
+fi
+
 read -rp "Press Enter to bring the stack up (Ctrl-C to abort)…" _
 
 # --- 6. Up ----------------------------------------------------------------
