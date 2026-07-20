@@ -130,6 +130,11 @@ jobs:
       - name: Build computer-use (runner image dependency)
         if: matrix.service == 'runner'
         run: |
+          # The image's entrypoint is `cp /app/computer-use /dist/libs/computer-use-amd64`,
+          # so the mounted volume must already contain dist/libs/ — the container does
+          # not create it. build-computer-use-amd64.sh mkdir's it before the same
+          # docker run; replicate that here or the copy fails with "No such file".
+          mkdir -p dist/libs
           docker build --platform linux/amd64 -t computer-use-amd64:build -f hack/computer-use/Dockerfile .
           docker run --rm -v "$(pwd)/dist:/dist" computer-use-amd64:build
           test -f dist/libs/computer-use-amd64 || { echo "::error::computer-use build produced no artifact"; exit 1; }
