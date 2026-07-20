@@ -9,3 +9,4 @@ Apache-2.0 Daytona SDK) is not an AGPL artifact and is not listed here.
 | Client | Tag | Commit | Delivered (UTC) | Artifacts |
 |--------|-----|--------|-----------------|-----------|
 | _(none yet)_ | | | | |
+| actian | byoc/actian/20260720-79cb1970f | 79cb1970f | 2026-07-20T11:59:46Z | source+offer+sha256 |
