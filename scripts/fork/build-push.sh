@@ -40,6 +40,11 @@ SHORT_SHA="$(git rev-parse --short HEAD)"
 DATE="$(date -u +%Y%m%d)"
 TAG="${TAG:-fork-${DATE}-${SHORT_SHA}}"
 
+# Docker image tags cannot contain '/', but a caller (byoc-release.sh) passes a
+# git-style tag like byoc/<client>/<date-sha>. Derive a tag-safe form for the
+# image reference and the digest filename; keep the original TAG for provenance.
+IMAGE_TAG="${TAG//[^A-Za-z0-9._-]/-}"
+
 # Honoured by compose build for both the FROM pulls and the output image.
 export DOCKER_DEFAULT_PLATFORM="$TARGET_PLATFORM"
 
@@ -100,38 +105,49 @@ if command -v aws >/dev/null 2>&1 && [[ "$FORK_REGISTRY" == *.dkr.ecr.*.amazonaw
   echo ">> Preflight OK: all ${#SERVICES[@]} ECR repositories exist in $REGION"
 fi
 
-# apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64`, a prebuilt
-# artifact that is gitignored and NOT produced by `compose build` — upstream's CI
-# builds it in a separate job and passes it between jobs as an artifact. Without
-# it the runner build dies on a missing COPY source, so build it here.
-#
-# It is amd64-only by design: the binary ships into sandboxes rather than running
-# in the runner image, and upstream feeds the same amd64 artifact to both its
-# amd64 and arm64 image builds. So this does not vary with TARGET_PLATFORM.
-# Called directly rather than via `nx run computer-use:build-amd64` — the nx target
-# only shells out to this script, and going direct avoids needing node_modules.
-# On x86_64 it is a native `go build`; on other hosts the script cross-builds.
+# go.work.sum is gitignored and generated at build time; the three Go service
+# Dockerfiles AND hack/computer-use/Dockerfile all `COPY go.work.sum`, so a fresh
+# checkout fails with "failed to calculate checksum of ref" without it. Generate
+# it in a golang container so this needs only Docker — no local Go toolchain.
+if [[ ! -f go.work.sum ]]; then
+  echo ">> Generating go.work.sum (Go services COPY it)"
+  docker run --rm -v "$REPO_ROOT:/src" -w /src \
+    -e GONOSUMDB=github.com/daytonaio/daytona golang:1.25 \
+    sh -c 'go work sync || true; touch go.work.sum'
+fi
+
+# apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64`, a prebuilt,
+# gitignored artifact `compose build` cannot produce. Built via
+# hack/computer-use/Dockerfile, NOT the native build-*.sh path: that does a bare
+# `go build` on x86_64, and computer-use's robotgo needs X11/CGO dev libs the build
+# host may lack (fails with `undefined: Bitmap`). The Dockerfile bakes those deps in
+# (libx11-dev, libxtst-dev, gcc, CGO_ENABLED=1). It COPYs go.work.sum, made above.
+# amd64-only by design — the binary ships into sandboxes, not the runner image.
 if [[ ! -f dist/libs/computer-use-amd64 ]]; then
-  echo ">> Building computer-use (prebuilt dependency of the runner image)"
-  ./hack/computer-use/build-computer-use-amd64.sh
+  echo ">> Building computer-use (runner image dependency)"
+  mkdir -p dist/libs
+  docker build --platform linux/amd64 -t computer-use-amd64:build -f hack/computer-use/Dockerfile .
+  docker run --rm -v "$REPO_ROOT/dist:/dist" computer-use-amd64:build
+  test -f dist/libs/computer-use-amd64 || { echo "!! computer-use build produced no artifact" >&2; exit 1; }
 fi
 
 echo ">> Building service images from source (tag: $TAG, platform: $TARGET_PLATFORM)"
 "${COMPOSE[@]}" build api proxy runner ssh-gateway
 
 echo ">> Retagging + pushing to $FORK_REGISTRY"
-DIGESTS_FILE="dist/fork-image-digests-${TAG}.txt"
+DIGESTS_FILE="dist/fork-image-digests-${IMAGE_TAG}.txt"
 mkdir -p dist
 {
-  echo "# tag:      $TAG"
-  echo "# platform: $TARGET_PLATFORM"
-  echo "# commit:   $(git rev-parse HEAD)"
+  echo "# tag:       $IMAGE_TAG"
+  [[ "$IMAGE_TAG" != "$TAG" ]] && echo "# source tag: $TAG"
+  echo "# platform:  $TARGET_PLATFORM"
+  echo "# commit:    $(git rev-parse HEAD)"
 } > "$DIGESTS_FILE"
 
 for entry in "${SERVICES[@]}"; do
   svc="${entry%%|*}"
   src="${entry##*|}"                          # e.g. daytonaio/daytona-api (:latest)
-  dst="${FORK_REGISTRY}/daytona-${svc}:${TAG}"
+  dst="${FORK_REGISTRY}/daytona-${svc}:${IMAGE_TAG}"
   docker tag "$src" "$dst"
   docker push "$dst"
 
