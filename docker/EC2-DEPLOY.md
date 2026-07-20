@@ -17,11 +17,13 @@ onto one EC2 box over plain HTTP. Not production — no TLS. Uses
 Daytona runs migrations on boot (`RUN_MIGRATIONS=true`) and will create/alter its
 own tables. Sharing the *instance* is fine; sharing a *database* corrupts things.
 On the prod Postgres:
+
 ```sql
 CREATE DATABASE daytona;
 CREATE USER daytona WITH PASSWORD '<pick-one>';
 GRANT ALL PRIVILEGES ON DATABASE daytona TO daytona;
 ```
+
 Then set `DB_DATABASE=daytona` and that user in `.env`.
 
 **2. Redis: must be non-cluster, and Daytona uses logical DB 0.**
@@ -40,6 +42,7 @@ its CA at `docker/certs/rds-ca-bundle.pem` (the api mounts it). If not, set
 ## EC2 prerequisites (the runner is picky)
 
 The `runner` runs privileged Docker-in-Docker. On the box, confirm:
+
 - **`mount-s3` binary** at `/usr/bin/mount-s3` — the compose bind-mounts it into the
   runner; if absent, Docker silently mounts an empty dir and the runner misbehaves.
   Install [mountpoint-s3](https://github.com/awslabs/mountpoint-s3).
@@ -57,9 +60,18 @@ a test; mirror them later for full Hub independence.
 
 ## Steps (on the EC2)
 
-**1. Get the repo's `docker/` dir on the box** (git clone, or scp just `docker/`).
+**1. Get the `docker/` dir on the box.** No full clone needed — there's no build,
+images come from the registry. Grab only `docker/`:
+
+```bash
+# sparse checkout (no source, no history blobs):
+git clone --filter=blob:none --sparse https://github.com/ideaboxai/daytona.git
+cd daytona && git sparse-checkout set docker
+# — or just copy it from your machine:  scp -r docker <user>@<host>:~/
+```
 
 **2. Fill `docker/.env`** — copy from `.env.example`, then add:
+
 ```bash
 FORK_REGISTRY=304038454586.dkr.ecr.us-east-1.amazonaws.com/ideaboxai
 FORK_TAG=hub-20260720
@@ -74,9 +86,11 @@ REDIS_PASSWORD=<or empty>
 REDIS_TLS=true                 # false if prod redis has no TLS
 SSH_GATEWAY_HOST=<this box's public IP>
 ```
+
 Plus all the existing secrets (`ENCRYPTION_KEY`, tokens, SSH keys, etc.).
 
 **3. Log in to ECR:**
+
 ```bash
 aws ecr get-login-password --region us-east-1 \
   | docker login --username AWS --password-stdin \
@@ -84,6 +98,7 @@ aws ecr get-login-password --region us-east-1 \
 ```
 
 **4. Generate the IP-based dex config** (gitignored):
+
 ```bash
 cd <repo root>
 EC2_HOST=<this box's public IP>
@@ -94,6 +109,7 @@ sed -e "s#https://sandbox.ideaboxai.com/dex#http://$EC2_HOST:5556/dex#g" \
 ```
 
 **5. Bring it up** (override applied LAST):
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml \
@@ -101,11 +117,13 @@ docker compose --env-file docker/.env \
 ```
 
 **6. Watch it come up:**
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml -f docker/docker-compose.ec2-http.override.yaml \
   logs -f api
 ```
+
 Wait for: `🚀 Daytona API is running on: http://0.0.0.0:3002/api`. The api needs
 dex, minio, otel-collector, and a healthy runner all up — if it crash-loops, the
 log names the missing one.
@@ -119,6 +137,7 @@ Login: `dev@daytona.io` / `password` (from dex `staticPasswords`).
 
 IP-based OIDC is the fiddly part. Login redirects browser → dex
 (`http://<EC2_HOST>:5556/dex`) → back to the dashboard. If it loops or errors:
+
 - Confirm port `5556` is open in the security group.
 - Confirm `docker/dex/config.ec2.yaml` issuer and every redirect URI use the real
   `EC2_HOST` (not `sandbox.ideaboxai.com`, not `10.0.0.5`).
