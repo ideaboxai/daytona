@@ -31,6 +31,22 @@ source archive you were given.
 - **Open ports** (inbound): `3002` (api/dashboard), `4003` (proxy), `5556` (dex),
   `2222` (ssh-gateway).
 
+### Bootstrap a fresh host (Ubuntu)
+
+If starting from an empty VM:
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin awscli
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"      # then log out/in so docker works without sudo
+
+# mount-s3: the runner bind-mounts /usr/bin/mount-s3 — without it the runner
+# misbehaves silently
+wget -q https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.deb
+sudo apt-get install -y ./mount-s3.deb
+ls -l /usr/bin/mount-s3 /dev/fuse    # both must exist
+```
+
 ## Steps
 
 **1. Extract the source archive and enter it**
@@ -118,6 +134,57 @@ crash-loops, the log names the missing one.
 
 `http://<host>:3002/dashboard` (or your domain). Default login `dev@daytona.io` /
 `password` — change it in `docker/dex/config.*.yaml` for anything beyond a first test.
+
+## Verify (acceptance test)
+
+Booting is necessary but not sufficient — confirm a sandbox actually works, since that
+is what your application consumes.
+
+1. **All services up:**
+   ```bash
+   docker compose --env-file docker/.env \
+     -f docker/docker-compose.yaml \
+     -f docker/docker-compose.ec2-http.override.yaml ps
+   ```
+   `api`, `proxy`, `runner`, `ssh-gateway`, `dex`, `minio`, `otel-collector`,
+   `registry` should be running; `api` reachable.
+
+2. **API health:** `curl http://<host>:3002/api/health` → `200`.
+
+3. **Create a sandbox** — from the dashboard, or with the Daytona SDK/CLI pointed at
+   this deployment (`DAYTONA_API_URL=http://<host>:3002/api`, API key from the
+   dashboard). Run a command in it, then delete it. A successful create + exec proves
+   the runner (Docker-in-Docker), proxy, and ssh-gateway all work on the delivered
+   images — the real acceptance signal.
+
+## Operate & maintain
+
+- **Logs:** `docker compose ... logs -f <service>` (same `-f` file set as bring-up).
+- **Restart / stop:** `docker compose ... restart <service>` · `... down` (containers
+  only — your Postgres/Redis/MinIO data persists in their own stores/volumes).
+- **Upgrade to a new version:** the vendor gives you a new image tag (and a new source
+  archive). Set the new `FORK_TAG` in `docker/.env`, then
+  `docker compose ... pull && docker compose ... up -d`. The api runs any new DB
+  migrations on start. Keep each source archive you receive — it is the Corresponding
+  Source for that version.
+- **Back up:** your Postgres database (`daytona`) and the MinIO/S3 bucket hold all
+  state. Snapshot them on your normal schedule; the containers are stateless.
+- **Rotate the login:** replace the `dev@daytona.io` static password in
+  `docker/dex/config.*.yaml` (bcrypt hash) or wire dex to your own IdP.
+
+## Troubleshooting
+
+- **`api` crash-loops:** it needs Postgres, Redis, dex, minio, otel-collector, and a
+  healthy runner at boot. `docker compose ... logs api` names the missing one
+  (`ENOTFOUND <service>` / connection refused). Fix that dependency and it proceeds.
+- **`SELF_SIGNED_CERT_IN_CHAIN` on boot:** your Postgres TLS CA isn't trusted. Put its
+  CA bundle at `docker/certs/rds-ca-bundle.pem`, or set `DB_TLS_ENABLED=false` if your
+  Postgres has no TLS.
+- **Dashboard login loops/errors (HTTP-IP mode):** confirm port `5556` is open and
+  every URL in `docker/dex/config.ec2.yaml` uses your real host (issuer +
+  redirectURIs), matching `PUBLIC_OIDC_DOMAIN`.
+- **Sandbox create fails / hangs:** the runner host is missing `mount-s3` at
+  `/usr/bin/mount-s3` or `/dev/fuse`. Install them and recreate the runner.
 
 ## Notes
 
