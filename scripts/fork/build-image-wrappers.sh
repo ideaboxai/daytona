@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # Build the four service images as THIN WRAPPERS over the upstream daytonaio/*
 # images (docker/images/*.Dockerfile) and push them to OUR registry.
 #

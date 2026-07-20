@@ -102,26 +102,36 @@ jobs:
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
-      # apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64` — a prebuilt,
-      # gitignored artifact that the Docker build cannot produce itself. Upstream
-      # builds it in a separate job and passes it as an artifact; here only the
-      # runner leg needs it, so it is built in place rather than fanned out.
-      #
-      # It is amd64-only by design (the binary ships into sandboxes, it does not run
-      # in the runner image) — upstream feeds the same amd64 artifact to both its
-      # amd64 and arm64 image builds, so this stays correct if an arm64 leg is added.
+      # The three Go services (proxy, ssh-gateway, runner) all `COPY go.work
+      # go.work.sum` in their Dockerfiles, but go.work.sum is gitignored and
+      # generated at build time — absent in a fresh checkout, so the COPY fails
+      # with "failed to calculate checksum of ref". Generate it before building,
+      # exactly as upstream's release.yaml does. api is Node-only and skips this.
       - uses: actions/setup-go@v5
-        if: matrix.service == 'runner'
+        if: matrix.service != 'api'
         with:
           go-version-file: go.work
 
+      - name: Generate go.work.sum (Go services)
+        if: matrix.service != 'api'
+        run: |
+          GONOSUMDB=github.com/daytonaio/daytona go work sync
+          touch go.work.sum
+
+      # apps/runner/Dockerfile does `COPY dist/libs/computer-use-amd64` — a prebuilt,
+      # gitignored artifact the runner build cannot produce itself. It is amd64-only
+      # by design (ships into sandboxes, does not run in the runner image).
+      #
+      # Built via hack/computer-use/Dockerfile, NOT the build-*.sh native path: that
+      # script does a bare `go build` on x86_64, and computer-use's robotgo needs
+      # X11/CGO dev libs the runner lacks (fails with `undefined: Bitmap`). The
+      # Dockerfile bakes those deps in (libx11-dev, libxtst-dev, gcc, CGO_ENABLED=1).
+      # It COPYs go.work.sum, which the step above generated.
       - name: Build computer-use (runner image dependency)
         if: matrix.service == 'runner'
         run: |
-          # Invoked directly rather than through `nx run computer-use:build-amd64`:
-          # the nx target only shells out to this script, and going direct keeps
-          # node/yarn out of the job entirely. On x86_64 it is a native go build.
-          ./hack/computer-use/build-computer-use-amd64.sh
+          docker build --platform linux/amd64 -t computer-use-amd64:build -f hack/computer-use/Dockerfile .
+          docker run --rm -v "$(pwd)/dist:/dist" computer-use-amd64:build
           test -f dist/libs/computer-use-amd64 || { echo "::error::computer-use build produced no artifact"; exit 1; }
 
       - name: Configure AWS credentials (OIDC, no static keys)

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # Build the 4 Daytona service images FROM SOURCE (not Docker Hub) and push them
 # to OUR registry with an immutable, traceable tag. Removes the dependency on
 # daytonaio/* Docker Hub images that may be removed now upstream is frozen.
