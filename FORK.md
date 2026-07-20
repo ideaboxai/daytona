@@ -120,6 +120,11 @@ uses the **Apache-2.0** Daytona SDK (`libs/sdk-python` et al.) over the network 
 permissive, no copyleft reach — so it is **not** part of this handoff. Keep that
 boundary: integrate via the SDK/API, never by welding app logic into the server.
 
+**Full runbooks:** the end-to-end operator steps (cut → build → grant → rehearse →
+deliver) are in [`BYOC-DELIVERY.md`](BYOC-DELIVERY.md); the client-facing deploy guide
+is [`docker/CLIENT-INSTALL.md`](docker/CLIENT-INSTALL.md) (ships inside the source
+archive). This section is the summary.
+
 One command per client deploy:
 
 ```bash
