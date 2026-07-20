@@ -47,7 +47,22 @@ sudo apt-get install -y ./mount-s3.deb
 ls -l /usr/bin/mount-s3 /dev/fuse    # both must exist
 ```
 
-## Steps
+## Quick install (recommended)
+
+The delivery bundle includes a one-command installer. From the extracted bundle:
+
+```bash
+./install.sh
+```
+
+It loads the offline images, asks for your Postgres/Redis endpoints and this host's
+address, generates every secret for you, writes `docker/.env` and the dex config, and
+brings the stack up. You only answer ~6 prompts. Then jump to **Verify** below.
+
+The manual steps below are for a bespoke setup (e.g. HTTPS behind your own domain) or
+if you'd rather configure by hand.
+
+## Manual install (alternative)
 
 **1. Extract the source archive and enter it**
 ```bash
