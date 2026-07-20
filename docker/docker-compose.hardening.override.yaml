@@ -14,9 +14,12 @@
 # The runner stays root by design (privileged DinD hosts the sandboxes).
 #
 # Third-party images already run their main process as non-root internally
-# (postgres->postgres, redis->redis, dex->1001, minio, otel-collector), so no
-# `user:` override is forced here — that would fight their entrypoints and risk
-# breaking volume permissions. no-new-privileges is the safe blanket hardening.
+# (dex->1001, minio, otel-collector), so no `user:` override is forced here —
+# that would fight their entrypoints and risk breaking volume permissions.
+# no-new-privileges is the safe blanket hardening.
+#
+# Postgres/Redis are external managed services and pgAdmin/MailDev were removed,
+# so they no longer appear below.
 
 name: daytona
 
@@ -29,12 +32,8 @@ services:
   proxy:        { <<: *hardened }
   ssh-gateway:  { <<: *hardened }
   dex:          { <<: *hardened }
-  db:           { <<: *hardened }
-  pgadmin:      { <<: *hardened }
-  redis:        { <<: *hardened }
   registry-ui:  { <<: *hardened }
   registry:     { <<: *hardened }
-  maildev:      { <<: *hardened }
   minio:        { <<: *hardened }
   jaeger:       { <<: *hardened }
   otel-collector: { <<: *hardened }

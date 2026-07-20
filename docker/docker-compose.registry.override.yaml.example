@@ -1,16 +1,15 @@
 # Fork registry + pinning override (TEMPLATE — copy to docker-compose.registry.override.yaml)
 #
 # Why: upstream daytonaio/daytona froze on 2026-06-11. This override makes the
-# deployment independent of Docker Hub by (a) repointing our 4 service images to
-# OUR registry and (b) pinning every image to an immutable @sha256 digest so a
-# tag being moved/deleted can never change or break the running stack.
+# deployment independent of Docker Hub by (a) repointing every image to OUR
+# registry and (b) pinning each to an immutable @sha256 digest so a tag being
+# moved/deleted can never change or break the running stack.
 #
 # How to use:
-#   1. Run scripts/fork/build-push.sh to build + push our service images; it
+#   1. Run scripts/fork/build-push.sh to build + push our 4 service images; it
 #      writes dist/fork-image-digests-*.txt with the @sha256 digests.
-#   2. For the third-party images, capture the digests actually running today:
-#        docker compose --env-file docker/.env -f docker/docker-compose.yaml images --format '{{.Service}} {{.Repository}}@{{.ID}}'
-#      or: docker inspect --format='{{index .RepoDigests 0}}' <image>
+#   2. Run scripts/fork/mirror-thirdparty.sh to copy the 6 third-party images
+#      into our registry; it writes dist/fork-thirdparty-digests-*.txt.
 #   3. Paste digests below (replace every REPLACE_WITH_SHA256).
 #   4. Deploy with this override LAST so it wins:
 #        docker compose --env-file docker/.env \
@@ -18,12 +17,16 @@
 #          -f docker/docker-compose.registry.override.yaml up -d
 #
 # Set FORK_REGISTRY + FORK_TAG in docker/.env, e.g.
-#   FORK_REGISTRY=123456789.dkr.ecr.us-east-1.amazonaws.com
-#   FORK_TAG=fork-20260714-f7f6b7f57
+#   FORK_REGISTRY=120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core
+#   FORK_TAG=fork-YYYYMMDD-<shortsha>
+#
+# NOTE: repo names below match the ECR repositories exactly. They are NOT
+# consistent — jaeger keeps its org prefix (jaegertracing/all-in-one) while dex,
+# minio and otel dropped theirs. Do not "tidy" these into a pattern.
 
 name: daytona
 services:
-  # ---- our services: repoint off Docker Hub to our registry, pinned by digest ----
+  # ---- our services: built from source, pushed by build-push.sh ----
   api:
     image: ${FORK_REGISTRY}/daytona-api@sha256:REPLACE_WITH_SHA256
   proxy:
@@ -33,18 +36,16 @@ services:
   ssh-gateway:
     image: ${FORK_REGISTRY}/daytona-ssh-gateway@sha256:REPLACE_WITH_SHA256
 
-  # ---- third-party images that were UNPINNED in the base compose: pin them ----
-  # (postgres:18, dexidp/dex:v2.42.0, dpage/pgadmin4:9.2.0, registry:2.8.2,
-  #  jaegertracing/all-in-one:1.67.0, otel-collector:0.138.0 are already pinned)
-  redis:
-    image: redis@sha256:REPLACE_WITH_SHA256          # was redis:latest
+  # ---- third-party images: mirrored into our registry by mirror-thirdparty.sh ----
+  dex:
+    image: ${FORK_REGISTRY}/dex@sha256:REPLACE_WITH_SHA256                        # dexidp/dex:v2.42.0
   registry-ui:
-    image: joxit/docker-registry-ui@sha256:REPLACE_WITH_SHA256   # was :main (mutable)
-  maildev:
-    image: maildev/maildev@sha256:REPLACE_WITH_SHA256            # was untagged (latest)
+    image: ${FORK_REGISTRY}/docker-registry-ui@sha256:REPLACE_WITH_SHA256         # joxit/docker-registry-ui:main (mutable tag)
+  registry:
+    image: ${FORK_REGISTRY}/registry@sha256:REPLACE_WITH_SHA256                   # registry:2.8.2
+  jaeger:
+    image: ${FORK_REGISTRY}/jaegertracing/all-in-one@sha256:REPLACE_WITH_SHA256   # jaegertracing/all-in-one:1.67.0
   minio:
-    image: minio/minio@sha256:REPLACE_WITH_SHA256    # was minio/minio:latest
-
-  # Optional but recommended: mirror the third-party images into our own registry
-  # too, so a Docker Hub outage can't block a fresh deploy. If you do, prefix the
-  # image names above with ${FORK_REGISTRY}/ and push them in build-push.sh.
+    image: ${FORK_REGISTRY}/minio@sha256:REPLACE_WITH_SHA256                      # minio/minio:latest
+  otel-collector:
+    image: ${FORK_REGISTRY}/opentelemetry-collector-contrib@sha256:REPLACE_WITH_SHA256  # otel/opentelemetry-collector-contrib:0.138.0

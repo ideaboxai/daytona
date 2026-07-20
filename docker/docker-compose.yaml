@@ -20,13 +20,22 @@ services:
       - ENCRYPTION_SALT=${ENCRYPTION_SALT}
       - NODE_ENV=production
       - PORT=3002
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USERNAME=user
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_DATABASE=daytona
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - DB_HOST=${DB_HOST:?set DB_HOST in docker/.env}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USERNAME=${DB_USERNAME:?set DB_USERNAME in docker/.env}
+      - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in docker/.env}
+      - DB_DATABASE=${DB_DATABASE:-daytona}
+      - DB_TLS_ENABLED=${DB_TLS_ENABLED:-true}
+      - DB_TLS_REJECT_UNAUTHORIZED=${DB_TLS_REJECT_UNAUTHORIZED:-true}
+      # RDS serves a cert from Amazon's private RDS CA, which Node does not trust
+      # by default; without this, TLS verification fails with SELF_SIGNED_CERT_IN_CHAIN.
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/rds/rds-ca-bundle.pem
+      # Redis Cluster is NOT supported — the clients here are standalone-only.
+      - REDIS_HOST=${REDIS_HOST:?set REDIS_HOST in docker/.env}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-true}
       - OIDC_CLIENT_ID=daytona
       - OIDC_ISSUER_BASE_URL=http://dex:5556/dex
       - PUBLIC_OIDC_DOMAIN=https://sandbox.ideaboxai.com/dex
@@ -48,12 +57,14 @@ services:
       - INTERNAL_REGISTRY_ADMIN=${REGISTRY_ADMIN}
       - INTERNAL_REGISTRY_PASSWORD=${REGISTRY_PASSWORD}
       - INTERNAL_REGISTRY_PROJECT_ID=daytona
-      - SMTP_HOST=maildev
-      - SMTP_PORT=1025
-      - SMTP_USER=
-      - SMTP_PASSWORD=
-      - SMTP_SECURE=
-      - SMTP_EMAIL_FROM=Daytona Team <no-reply@daytona.io>
+      # Empty host disables email entirely (org invitation is the only email sent).
+      # Point at a real relay (e.g. SES) to enable invitation emails.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SECURE=${SMTP_SECURE:-}
+      - SMTP_EMAIL_FROM=${SMTP_EMAIL_FROM:-Daytona Team <no-reply@daytona.io>}
       - S3_ENDPOINT=http://minio:9000
       - S3_STS_ENDPOINT=http://minio:9000/minio/v1/assume-role
       - S3_REGION=us-east-1
@@ -100,15 +111,13 @@ services:
       - RUN_MIGRATIONS=true
       - OTEL_COLLECTOR_API_KEY=${OTEL_COLLECTOR_API_KEY}
       - HEALTH_CHECK_API_KEY=${HEALTH_CHECK_API_KEY}
+    volumes:
+      - ./certs/rds-ca-bundle.pem:/etc/ssl/rds/rds-ca-bundle.pem:ro
     networks:
       - daytona-network
     logging: *default-logging
     restart: always
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       runner:
         condition: service_started
       dex:
@@ -128,8 +137,11 @@ services:
       - OIDC_DOMAIN=http://dex:5556/dex
       - OIDC_PUBLIC_DOMAIN=https://sandbox.ideaboxai.com/dex
       - OIDC_AUDIENCE=daytona
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_HOST=${REDIS_HOST:?set REDIS_HOST in docker/.env}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-true}
       - TOOLBOX_ONLY_MODE=false
       - PREVIEW_WARNING_ENABLED=false
     networks:
@@ -210,56 +222,9 @@ services:
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "https://sandbox.ideaboxai.com/dex/.well-known/openid-configuration"]
 
-  db:
-    image: postgres:18
-    environment:
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_USER=user
-      - POSTGRES_DB=daytona
-    networks:
-      - daytona-network
-    logging: *default-logging
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d daytona"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    volumes:
-      - db_data:/var/lib/postgresql/18/docker
-
-  pgadmin:
-    image: dpage/pgadmin4:9.2.0
-    entrypoint: ['sh', '-c', 'chmod 600 /pgpass && exec /entrypoint.sh']
-    environment:
-      PGADMIN_DEFAULT_EMAIL: dev@daytona.io
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
-    user: root
-    volumes:
-      - ./pgadmin4/servers.json:/pgadmin4/servers.json
-      - ./pgadmin4/pgpass:/pgpass
-    depends_on:
-      - db
-    ports:
-      - 127.0.0.1:5050:80
-    networks:
-      - daytona-network
-    logging: *default-logging
-    restart: always
-
-  redis:
-    image: redis:latest
-    networks:
-      - daytona-network
-    logging: *default-logging
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Postgres and Redis are external managed services (RDS / ElastiCache); the
+  # in-stack `db` and `redis` containers were removed. pgAdmin and MailDev were
+  # dev-only tools and are gone with them. Connection details live in docker/.env.
 
   registry-ui:
     image: joxit/docker-registry-ui:main
@@ -300,15 +265,6 @@ services:
     logging: *default-logging
     ports:
       - 127.0.0.1:6000:6000
-
-  maildev:
-    image: maildev/maildev
-    networks:
-      - daytona-network
-    logging: *default-logging
-    restart: always
-    ports:
-      - 127.0.0.1:1081:1080
 
   minio:
     image: minio/minio:latest
@@ -370,7 +326,6 @@ configs:
 volumes:
   registry: {}
   minio_data: {}
-  db_data: {}
   dex_db: {}
   jaeger-badger: {}
 
