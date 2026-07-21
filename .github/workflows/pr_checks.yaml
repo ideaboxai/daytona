@@ -1,9 +1,8 @@
 name: '[PR] Validate code'
 
 on:
-  pull_request:
-    branches:
-      - main
+  # Auto-trigger on PRs disabled for BYOC fork; run manually from the Actions tab.
+  workflow_dispatch:
 
 permissions:
   contents: read

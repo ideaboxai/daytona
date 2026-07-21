@@ -1,7 +1,7 @@
 name: GT Translate
 on:
-  push:
-    branches: [main]
+  # Auto-trigger on push disabled for BYOC fork; run manually from the Actions tab.
+  workflow_dispatch:
 
 permissions: {}
 
