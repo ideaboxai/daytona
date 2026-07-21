@@ -40,7 +40,12 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
     steps:
+      # persist-credentials: false — OIDC auth to AWS, no git writeback needed; also
+      # avoids the flaky post-job `git submodule foreach` cleanup on the self-hosted
+      # runner that can mark a successful job red.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Configure AWS credentials (OIDC, no static keys)
         uses: aws-actions/configure-aws-credentials@v4
