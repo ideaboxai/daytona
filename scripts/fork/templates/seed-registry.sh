@@ -10,7 +10,7 @@
 #
 # Reads IMAGES.txt (shipped in the bundle), loads images.tar, retags each image to
 # <registry-prefix>/<leaf>, and pushes. The leaf paths match exactly what the
-# compose overrides expect (ec2-http for the 4 server images, internal-registry for
+# compose overrides expect (ec2-http for the 4 server images, registry override for
 # the 6 third-party), so deploy needs only FORK_REGISTRY=<prefix>.
 #
 # Prereqs: `docker login <registry-host>` first if the registry needs auth; the
@@ -38,20 +38,31 @@ else
 fi
 
 # --- retag + push each image to <PREFIX>/<leaf> ---------------------------
-# leaf rule:
-#   ours (source has a registry host + path)  -> basename           e.g. daytona-api:tag
-#   third-party (Docker Hub name, no host)     -> keep the full name  e.g. dexidp/dex:v2.42.0
+# leaf names MUST match docker-compose.registry.override.yaml AND the repo names
+# mirror-thirdparty.sh uses (and the ECR repos DevOps created):
+#   ours          -> basename                 e.g. daytona-api:<tag>
+#   third-party   -> canonical ECR repo name  e.g. dexidp/dex -> dex, minio/minio -> minio
+# The mapping is deliberately irregular (jaeger keeps its org, others drop theirs) —
+# keep it in lockstep with mirror-thirdparty.sh.
+canon() {
+  local s="$1" name="${1%:*}" tag="${1##*:}"
+  case "$name" in
+    dexidp/dex)                           echo "dex:$tag" ;;
+    joxit/docker-registry-ui)             echo "docker-registry-ui:$tag" ;;
+    minio/minio)                          echo "minio:$tag" ;;
+    otel/opentelemetry-collector-contrib) echo "opentelemetry-collector-contrib:$tag" ;;
+    jaegertracing/all-in-one)             echo "jaegertracing/all-in-one:$tag" ;;
+    registry)                             echo "registry:$tag" ;;
+    *)                                    echo "${s##*/}" ;;   # ours: basename
+  esac
+}
+
 echo ">> Retagging + pushing to $PREFIX"
 FORK_TAG=""
 while IFS= read -r src; do
   [ -n "$src" ] || continue
-  first="${src%%/*}"
-  if [[ "$src" == */* && ( "$first" == *.* || "$first" == *:* ) ]]; then
-    leaf="${src##*/}"                       # ours: daytona-<svc>:<tag>
-    FORK_TAG="${leaf##*:}"                   # remember the server-image tag
-  else
-    leaf="$src"                             # third-party: org/name:tag or name:tag
-  fi
+  leaf="$(canon "$src")"
+  case "$src" in */daytona-*) FORK_TAG="${leaf##*:}" ;; esac   # remember the server tag
   dst="${PREFIX}/${leaf}"
   echo "   $src  ->  $dst"
   docker tag "$src" "$dst"
@@ -65,4 +76,4 @@ echo "     FORK_REGISTRY=$PREFIX"
 echo "     FORK_TAG=$FORK_TAG"
 echo ">> Then bring up pulling ALL images from your registry:"
 echo "     IMAGE_SOURCE=registry FORK_REGISTRY=$PREFIX ./install.sh"
-echo "   (or manually add -f docker/docker-compose.internal-registry.override.yaml)"
+echo "   (or manually add -f docker/docker-compose.registry.override.yaml)"

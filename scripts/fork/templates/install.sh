@@ -27,8 +27,9 @@ ENV="docker/.env"
 COMPOSE=(docker compose --env-file "$ENV"
   -f docker/docker-compose.yaml
   -f docker/docker-compose.ec2-http.override.yaml)
-# registry mode: also repoint the 6 third-party images to the client's registry.
-[ "$IMAGE_SOURCE" = registry ] && COMPOSE+=(-f docker/docker-compose.internal-registry.override.yaml)
+# registry mode: also repoint the 6 third-party images to ${FORK_REGISTRY}, so all
+# 10 come from one registry (our ECR for actian, or the client's own).
+[ "$IMAGE_SOURCE" = registry ] && COMPOSE+=(-f docker/docker-compose.registry.override.yaml)
 
 echo "== Daytona install =="
 

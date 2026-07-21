@@ -70,7 +70,7 @@ echo ">> Copying compose + configs"
 cp docker/docker-compose.yaml \
    docker/docker-compose.ec2-http.override.yaml \
    docker/docker-compose.hardening.override.yaml \
-   docker/docker-compose.internal-registry.override.yaml \
+   docker/docker-compose.registry.override.yaml \
    docker/.env.example \
    docker/CLIENT-INSTALL.md \
    "$STAGE/docker/"

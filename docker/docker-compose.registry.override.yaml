@@ -1,0 +1,38 @@
+# Registry override — pull ALL images from ONE registry (${FORK_REGISTRY}).
+#
+# PRIMARY path for clients who pull from our ECR (e.g. actian): our 4 server images
+# are repointed by docker-compose.ec2-http.override.yaml; this file repoints the 6
+# THIRD-PARTY images to the same prefix. Together, all 10 come from ${FORK_REGISTRY} —
+# no Docker Hub at deploy. Seed the third-party into the registry first with
+# scripts/fork/mirror-thirdparty.sh (into our ECR) or seed-registry.sh (client's own).
+#
+# The third-party repo names MUST match what mirror-thirdparty.sh / seed-registry.sh
+# push (and the ECR repositories DevOps created): dex, docker-registry-ui, registry,
+# jaegertracing/all-in-one, minio, opentelemetry-collector-contrib. NB the names are
+# deliberately irregular — jaeger keeps its org prefix, the others dropped theirs —
+# so keep this file, mirror-thirdparty.sh, and seed-registry.sh in lockstep.
+#
+# ${FORK_REGISTRY} = registry host + namespace, e.g.
+#   120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core
+#
+# Apply LAST, after base + ec2-http override:
+#   docker compose --env-file docker/.env \
+#     -f docker/docker-compose.yaml \
+#     -f docker/docker-compose.ec2-http.override.yaml \
+#     -f docker/docker-compose.registry.override.yaml pull
+
+name: daytona
+
+services:
+  dex:
+    image: ${FORK_REGISTRY}/dex:v2.42.0
+  registry-ui:
+    image: ${FORK_REGISTRY}/docker-registry-ui:main
+  registry:
+    image: ${FORK_REGISTRY}/registry:2.8.2
+  jaeger:
+    image: ${FORK_REGISTRY}/jaegertracing/all-in-one:1.67.0
+  minio:
+    image: ${FORK_REGISTRY}/minio:latest
+  otel-collector:
+    image: ${FORK_REGISTRY}/opentelemetry-collector-contrib:0.138.0
