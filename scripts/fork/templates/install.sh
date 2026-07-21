@@ -17,17 +17,26 @@ cd "$HERE"
 # but validate the merged compose instead of starting it. For pre-delivery tests.
 DRY_RUN="${DRY_RUN:-0}"
 
-FORK_REGISTRY="__FORK_REGISTRY__"
-FORK_TAG="__FORK_TAG__"
+# IMAGE_SOURCE=bundle (default) loads images from images.tar (air-gap). =registry
+# skips the load and pulls all 10 from the client's own registry (seed it first with
+# seed-registry.sh); set FORK_REGISTRY to that registry's prefix.
+IMAGE_SOURCE="${IMAGE_SOURCE:-bundle}"
+FORK_REGISTRY="${FORK_REGISTRY:-__FORK_REGISTRY__}"
+FORK_TAG="${FORK_TAG:-__FORK_TAG__}"
 ENV="docker/.env"
 COMPOSE=(docker compose --env-file "$ENV"
   -f docker/docker-compose.yaml
   -f docker/docker-compose.ec2-http.override.yaml)
+# registry mode: also repoint the 6 third-party images to the client's registry.
+[ "$IMAGE_SOURCE" = registry ] && COMPOSE+=(-f docker/docker-compose.internal-registry.override.yaml)
 
 echo "== Daytona install =="
 
-# --- 1. Load the offline images (air-gap) ---------------------------------
-if [ -f images.tar ]; then
+# --- 1. Images: load from the bundle, or pull from the client's registry ---
+if [ "$IMAGE_SOURCE" = registry ]; then
+  echo ">> IMAGE_SOURCE=registry — skipping offline load; compose pulls all 10 from"
+  echo "   your registry (seed it first with ./seed-registry.sh)."
+elif [ -f images.tar ]; then
   echo ">> Loading images from images.tar (offline)…"
   docker load -i images.tar
 else
@@ -41,6 +50,11 @@ asks() { local v; read -rsp "$1: " v; echo >&2; printf '%s' "$v"; }   # secret i
 
 DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 HOST="$(ask 'Public IP/DNS of this host' "$DEFAULT_HOST")"
+if [ "$IMAGE_SOURCE" = registry ]; then
+  case "$FORK_REGISTRY" in ""|__FORK_REGISTRY__)
+    FORK_REGISTRY="$(ask 'Internal registry prefix (host[:port][/namespace])' '')" ;;
+  esac
+fi
 DB_HOST="$(ask 'Postgres host' '')"
 DB_USER="$(ask 'Postgres user' 'daytona')"
 DB_PASS="$(asks 'Postgres password')"

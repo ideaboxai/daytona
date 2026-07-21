@@ -1,8 +1,13 @@
-# Daytona — client install guide
+# Daytona — client install guide (air-gapped / offline bundle)
 
 You received a Daytona server deployment. This guide brings it up on your own
 infrastructure. **No git clone or GitHub access is needed** — everything is in the
 source archive you were given.
+
+> This is the **air-gapped** path: images are loaded from the offline bundle
+> (`images.tar`), nothing is pulled from the internet. If your host **has outbound
+> internet** and pulls the server images from the vendor registry instead, use
+> [CLIENT-INSTALL-CONNECTED.md](CLIENT-INSTALL-CONNECTED.md).
 
 ## What you received
 
@@ -61,6 +66,29 @@ brings the stack up. You only answer ~6 prompts. Then jump to **Verify** below.
 
 The manual steps below are for a bespoke setup (e.g. HTTPS behind your own domain) or
 if you'd rather configure by hand.
+
+## Deploy via your own internal registry (fleet / multiple nodes)
+
+If you run more than one node, or your nodes are configured to pull only from your
+**internal registry** (common in locked-down networks), seed that registry once
+instead of `docker load`-ing the tarball on every host.
+
+**1. Seed your registry** — once, from a host that has the bundle and can reach the
+registry. Log in first if it needs auth:
+```bash
+docker login <your-registry-host>      # if required
+./seed-registry.sh                     # asks for the registry host + namespace
+```
+It loads `images.tar` and pushes all 10 images (4 Daytona server + 6 third-party) to
+`<registry-host>/<namespace>/...`, then prints the `FORK_REGISTRY` value to use.
+
+**2. Deploy on each node** — pull everything from your registry, no tarball:
+```bash
+IMAGE_SOURCE=registry FORK_REGISTRY=<prefix from step 1> ./install.sh
+```
+`install.sh` skips the offline load and brings the stack up with the
+`internal-registry` override, so **all 10 images** come from your registry — no Docker
+Hub, no vendor ECR. Then jump to **Verify**.
 
 ## Manual install (alternative)
 

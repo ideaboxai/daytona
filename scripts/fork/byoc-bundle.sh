@@ -70,6 +70,7 @@ echo ">> Copying compose + configs"
 cp docker/docker-compose.yaml \
    docker/docker-compose.ec2-http.override.yaml \
    docker/docker-compose.hardening.override.yaml \
+   docker/docker-compose.internal-registry.override.yaml \
    docker/.env.example \
    docker/CLIENT-INSTALL.md \
    "$STAGE/docker/"
@@ -90,11 +91,15 @@ else
   : > "$STAGE/docker/certs/rds-ca-bundle.pem"
 fi
 
-echo ">> Rendering install.sh"
+echo ">> Rendering install.sh + shipping seed-registry.sh"
 sed -e "s|__FORK_REGISTRY__|${FORK_REGISTRY}|g" \
     -e "s|__FORK_TAG__|${FORK_TAG}|g" \
     scripts/fork/templates/install.sh > "$STAGE/install.sh"
 chmod +x "$STAGE/install.sh"
+# For clients who mirror into their own registry (e.g. air-gapped with an internal
+# registry): seed-registry.sh loads images.tar and pushes all 10 to their registry.
+cp scripts/fork/templates/seed-registry.sh "$STAGE/seed-registry.sh"
+chmod +x "$STAGE/seed-registry.sh"
 
 echo ">> Including AGPL Corresponding Source + written offer"
 cp "$BYOC_DIR"/daytona-src-*.tar.gz "$BYOC_DIR"/daytona-src-*.tar.gz.sha256 \
@@ -110,6 +115,11 @@ Image tag: ${FORK_TAG}   Platform: ${PLATFORM}
 2. Run:   ./install.sh
    It loads the images, asks for your Postgres/Redis endpoints and host
    address, generates all secrets, and starts the stack.
+
+Have an internal registry / multiple nodes? Seed it once instead:
+   ./seed-registry.sh    # pushes all 10 images to your registry
+   IMAGE_SOURCE=registry FORK_REGISTRY=<prefix> ./install.sh   # on each node
+See docker/CLIENT-INSTALL.md ("Deploy via your own internal registry").
 
 WRITTEN_OFFER.txt + daytona-src-*.tar.gz are the AGPL-3.0 Corresponding Source
 for the Daytona server in this bundle. Keep them.
