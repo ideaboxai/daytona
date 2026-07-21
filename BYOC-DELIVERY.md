@@ -230,10 +230,24 @@ tar xzf daytona-<client>-<tag>.bundle.tar.gz && cd daytona-<client>-<tag>
 No git, no build, no registry access. Point them at `README.txt` (entrypoint) and
 `docker/CLIENT-INSTALL.md` (detail), both inside the bundle.
 
+**Air-gapped WITH an internal registry (e.g. actian):** same offline bundle, but the
+client seeds their own registry once instead of loading on every node — reuses the
+exact channel their other apps already pull from. In the bundle:
+```
+./seed-registry.sh                                        # loads images.tar, pushes all 10 to their registry
+IMAGE_SOURCE=registry FORK_REGISTRY=<prefix> ./install.sh # on each node — pulls all 10 from their registry
+```
+`seed-registry.sh` retags every image to `<registry>/<namespace>/...` matching the
+`internal-registry` compose override, so all 10 (4 server + 6 third-party) come from
+their registry — no Docker Hub, no vendor ECR. See the "Deploy via your own internal
+registry" section in `docker/CLIENT-INSTALL.md`.
+
 **Internet-connected (alt):** if you used §4-alt (pull grant), the client doesn't need
 `images.tar` — deliver the source archive + offer, give them the registry host /
-namespace / tag, and they pull at deploy. Same `install.sh`, but images come from the
-registry rather than `images.tar`.
+namespace / tag / region, and they pull at deploy. Same `install.sh` (it skips the
+offline load when there's no `images.tar`), but images come from the registry. Point
+that client at [docker/CLIENT-INSTALL-CONNECTED.md](docker/CLIENT-INSTALL-CONNECTED.md)
+— the connected-path client guide — instead of the air-gap `CLIENT-INSTALL.md`.
 
 ---
 

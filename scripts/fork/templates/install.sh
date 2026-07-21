@@ -13,17 +13,30 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
-FORK_REGISTRY="__FORK_REGISTRY__"
-FORK_TAG="__FORK_TAG__"
+# DRY_RUN=1 → do everything (load images, write .env, gen secrets, render dex)
+# but validate the merged compose instead of starting it. For pre-delivery tests.
+DRY_RUN="${DRY_RUN:-0}"
+
+# IMAGE_SOURCE=bundle (default) loads images from images.tar (air-gap). =registry
+# skips the load and pulls all 10 from the client's own registry (seed it first with
+# seed-registry.sh); set FORK_REGISTRY to that registry's prefix.
+IMAGE_SOURCE="${IMAGE_SOURCE:-bundle}"
+FORK_REGISTRY="${FORK_REGISTRY:-__FORK_REGISTRY__}"
+FORK_TAG="${FORK_TAG:-__FORK_TAG__}"
 ENV="docker/.env"
 COMPOSE=(docker compose --env-file "$ENV"
   -f docker/docker-compose.yaml
   -f docker/docker-compose.ec2-http.override.yaml)
+# registry mode: also repoint the 6 third-party images to the client's registry.
+[ "$IMAGE_SOURCE" = registry ] && COMPOSE+=(-f docker/docker-compose.internal-registry.override.yaml)
 
 echo "== Daytona install =="
 
-# --- 1. Load the offline images (air-gap) ---------------------------------
-if [ -f images.tar ]; then
+# --- 1. Images: load from the bundle, or pull from the client's registry ---
+if [ "$IMAGE_SOURCE" = registry ]; then
+  echo ">> IMAGE_SOURCE=registry — skipping offline load; compose pulls all 10 from"
+  echo "   your registry (seed it first with ./seed-registry.sh)."
+elif [ -f images.tar ]; then
   echo ">> Loading images from images.tar (offline)…"
   docker load -i images.tar
 else
@@ -37,6 +50,11 @@ asks() { local v; read -rsp "$1: " v; echo >&2; printf '%s' "$v"; }   # secret i
 
 DEFAULT_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
 HOST="$(ask 'Public IP/DNS of this host' "$DEFAULT_HOST")"
+if [ "$IMAGE_SOURCE" = registry ]; then
+  case "$FORK_REGISTRY" in ""|__FORK_REGISTRY__)
+    FORK_REGISTRY="$(ask 'Internal registry prefix (host[:port][/namespace])' '')" ;;
+  esac
+fi
 DB_HOST="$(ask 'Postgres host' '')"
 DB_USER="$(ask 'Postgres user' 'daytona')"
 DB_PASS="$(asks 'Postgres password')"
@@ -100,6 +118,18 @@ sed -e "s#https://sandbox.ideaboxai.com/dex#http://$HOST:5556/dex#g" \
     -e "s#https://sandbox.ideaboxai.com#http://$HOST:3002#g" \
     docker/dex/config.yaml > docker/dex/config.ec2.yaml
 
+# --- 4b. Postgres CA bundle ------------------------------------------------
+# The api bind-mounts docker/certs/rds-ca-bundle.pem (NODE_EXTRA_CA_CERTS). If the
+# file is absent, Docker would mount an empty DIRECTORY there and Node ignores it.
+# Guarantee it's a real file so the mount is valid; the bundle ships the RDS CA.
+mkdir -p docker/certs
+[ -f docker/certs/rds-ca-bundle.pem ] || : > docker/certs/rds-ca-bundle.pem
+if [ "$DB_TLS" = "true" ] && [ ! -s docker/certs/rds-ca-bundle.pem ]; then
+  echo "!! DB TLS is on but docker/certs/rds-ca-bundle.pem is empty."
+  echo "   Put your Postgres CA there (for RDS it ships in this bundle), or answer"
+  echo "   DB TLS = false. Continuing — the api will fail TLS verify until fixed."
+fi
+
 # --- 5. Preconditions the client must meet --------------------------------
 cat <<EOF
 
@@ -111,6 +141,14 @@ Before continuing, confirm on your side:
   * Redis '$REDIS_HOST' is non-cluster (INFO cluster -> cluster_enabled:0)
   * /usr/bin/mount-s3 and /dev/fuse exist on this host (the runner needs them)
 EOF
+if [ "$DRY_RUN" = "1" ]; then
+  echo
+  echo ">> DRY_RUN=1 — validating merged compose (not starting)…"
+  "${COMPOSE[@]}" config -q && echo ">> compose config OK — .env + overrides resolve."
+  echo ">> Dry run done. Re-run without DRY_RUN to bring the stack up."
+  exit 0
+fi
+
 read -rp "Press Enter to bring the stack up (Ctrl-C to abort)…" _
 
 # --- 6. Up ----------------------------------------------------------------

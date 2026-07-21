@@ -37,10 +37,18 @@ RUN VITE_API_URL=%DAYTONA_BASE_API_URL%/api yarn nx build dashboard --configurat
 ARG VERSION=0.0.1
 ENV VERSION=${VERSION}
 
+# At startup the api rewrites the built dashboard assets in place — it injects the
+# runtime API URL into the %DAYTONA_BASE_API_URL% placeholders (writeFileSync). The
+# build ran as root, so those files are root-owned; hand them to node or the api
+# crashes on boot with EACCES. Chown only the dashboard (keeps the layer small).
+RUN chown -R node:node /daytona/dist/apps/dashboard
+
 # Run as the non-root 'node' user (uid 1000, present in node:* images).
 # Build steps above run as root; only the runtime drops privileges.
 USER node
 
-HEALTHCHECK CMD [ "curl", "-f", "http://localhost:3000/api/config" ]
+# Shell form so ${PORT} expands — the api listens on PORT (3002 in compose), not
+# 3000. A hardcoded 3000 here reports the container "unhealthy" while it works.
+HEALTHCHECK CMD curl -f "http://localhost:${PORT:-3002}/api/config"
 
 ENTRYPOINT ["node", "dist/apps/api/main.js"]

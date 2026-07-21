@@ -55,6 +55,8 @@ RUN chmod +x daytona-proxy
 
 USER appuser
 
-HEALTHCHECK CMD [ "curl", "-f", "http://localhost:4000/health" ]
+# Shell form so ${PROXY_PORT} expands — the proxy listens on PROXY_PORT (4003 in
+# compose), not 4000. A hardcoded 4000 reports "unhealthy" while it works fine.
+HEALTHCHECK CMD curl -f "http://localhost:${PROXY_PORT:-4003}/health"
 
 ENTRYPOINT ["daytona-proxy"]
