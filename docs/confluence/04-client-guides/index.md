@@ -11,6 +11,10 @@ The four deliverable install paths. Give the client **one** of these — pick it
 **[Delivery scenarios](../02-delivery-scenarios)** decision table. All four end at the
 same **[acceptance test](../06-verify-operate/acceptance-test)** (boot + create a sandbox).
 
+**Provisioning the host first?** See **[Reference EC2 environment & setup](ec2-reference-setup)**
+— the exact AMI, instance size, region, EBS, and security-group spec to match, plus launch
++ bootstrap steps. Then return here for the image-source path.
+
 - **[4.1 Air-gapped — offline bundle](airgapped-offline-bundle)** — no internet at
   deploy; `docker load` from the bundle. The default for a single/few air-gapped hosts.
 - **[4.2 Air-gapped / fleet — your own internal registry](airgapped-internal-registry)** —
