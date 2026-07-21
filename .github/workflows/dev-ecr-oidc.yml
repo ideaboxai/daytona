@@ -83,7 +83,14 @@ jobs:
       ECR_REPOSITORY: ideaboxai-platform-core/daytona-${{ matrix.service }}
       COMMIT_SHA: ${{ github.sha }}
     steps:
+      # persist-credentials: false — this job authenticates to AWS via OIDC and
+      # never writes back to git, so it needs no persisted git token. It also
+      # sidesteps a flaky post-job cleanup on the self-hosted runner: the default
+      # checkout runs `git submodule foreach` to unset its credential config, which
+      # exits non-zero here and marks an otherwise-successful build/push job red.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Resolve & validate version
         id: ver
