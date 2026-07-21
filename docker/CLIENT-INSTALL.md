@@ -87,7 +87,7 @@ It loads `images.tar` and pushes all 10 images (4 Daytona server + 6 third-party
 IMAGE_SOURCE=registry FORK_REGISTRY=<prefix from step 1> ./install.sh
 ```
 `install.sh` skips the offline load and brings the stack up with the
-`internal-registry` override, so **all 10 images** come from your registry — no Docker
+`registry` override, so **all 10 images** come from your registry — no Docker
 Hub, no vendor ECR. Then jump to **Verify**.
 
 ## Manual install (alternative)

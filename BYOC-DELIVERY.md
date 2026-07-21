@@ -124,12 +124,29 @@ archive + written offer. The client extracts it and runs `./install.sh` (loads i
 prompts ~6 settings, generates secrets, brings up). `docker save` captures the local
 platform only — build/pull for the client's arch (default amd64).
 
-## 4-alt. Grant the client pull (only if the client is INTERNET-CONNECTED)
+## 4-alt. Grant the client pull from our ECR (client reaches our registry)
 
-Skip this for air-gapped clients. If the client can reach our registry, grant their
-account cross-account pull instead of shipping `images.tar` (revocable; never push):
+The client pulls from our ECR instead of loading `images.tar` — the model actian
+uses (their nodes pull from our ECR, same as our app). Two sub-cases by whether the
+client's network can reach Docker Hub.
+
+**If the client canNOT reach Docker Hub (e.g. actian) — mirror the 6 third-party into
+our ECR too, so all 10 live there:**
 ```bash
-for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway; do
+FORK_REGISTRY=<host>/<namespace> ./scripts/fork/mirror-thirdparty.sh   # 6 third-party -> our ECR
+```
+This pushes to the repos `dex`, `docker-registry-ui`, `registry`,
+`jaegertracing/all-in-one`, `minio`, `opentelemetry-collector-contrib` — matching
+`docker-compose.registry.override.yaml`. The client deploys with `IMAGE_SOURCE=registry`
+(adds that override) so **all 10** pull from `FORK_REGISTRY`. Grant pull on **all 10**
+repos below (add the 6 third-party repo names to the loop).
+
+**Grant cross-account pull** (revocable; never push). For the actian case list all 10
+repos; for a Hub-connected client, just the 4 `daytona-*`:
+```bash
+for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway \
+            dex docker-registry-ui registry jaegertracing/all-in-one minio \
+            opentelemetry-collector-contrib; do
   aws ecr set-repository-policy --region <region> \
     --repository-name <namespace>/$repo \
     --policy-text '{
@@ -139,8 +156,9 @@ for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway; do
         "Action":["ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:BatchCheckLayerAvailability"]}]}'
 done
 ```
-(If you'd rather push into the client's own ECR instead, point `FORK_REGISTRY` at
-theirs in §3 and skip this.)
+Hand the client `docker/CLIENT-INSTALL-CONNECTED.md` + the registry host / namespace /
+tag / region. (To push into the client's OWN ECR instead, point `FORK_REGISTRY` at
+theirs in §3 and skip the grant.)
 
 ---
 
@@ -238,7 +256,7 @@ exact channel their other apps already pull from. In the bundle:
 IMAGE_SOURCE=registry FORK_REGISTRY=<prefix> ./install.sh # on each node — pulls all 10 from their registry
 ```
 `seed-registry.sh` retags every image to `<registry>/<namespace>/...` matching the
-`internal-registry` compose override, so all 10 (4 server + 6 third-party) come from
+`registry` compose override, so all 10 (4 server + 6 third-party) come from
 their registry — no Docker Hub, no vendor ECR. See the "Deploy via your own internal
 registry" section in `docker/CLIENT-INSTALL.md`.
 

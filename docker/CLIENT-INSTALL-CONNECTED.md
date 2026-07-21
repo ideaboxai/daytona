@@ -63,13 +63,20 @@ registry. So: log in to the registry, then run it.
 aws ecr get-login-password --region <REGION> \
   | docker login --username AWS --password-stdin <REGISTRY_HOST>
 
-# 2. Run the installer — it generates every secret, writes docker/.env + dex config
+# 2a. ALL 10 images from the vendor registry — no Docker Hub at all. Use this if
+#     your host can't reach Docker Hub (locked-down networks). The vendor mirrors
+#     the 6 third-party images into their registry alongside the 4 server images.
+IMAGE_SOURCE=registry ./install.sh
+
+# 2b. …or, if your host CAN reach Docker Hub: the 4 server images come from the
+#     vendor registry, the 6 third-party from Docker Hub.
 ./install.sh
 ```
 
 When prompted, use the vendor's registry host+namespace as the image source and this
-host's address. After it starts, **pull happens on first `up`** — the compose
-references `<REGISTRY_HOST>/<namespace>/daytona-*:<tag>`. Then jump to **Verify**.
+host's address. After it starts, **pull happens on first `up`**. With `IMAGE_SOURCE=
+registry`, install.sh adds the `registry` override so **all 10** resolve under your
+`FORK_REGISTRY`; without it, only the 4 server images do. Then jump to **Verify**.
 
 The manual steps below are for a bespoke setup (e.g. HTTPS behind your own domain) or
 if you'd rather configure by hand.
@@ -136,18 +143,23 @@ forward `X-Forwarded-Proto: https`, set the public URLs and the dex
 "Reverse proxy / TLS" section in `README.md`.
 
 **6. Pull the images, then bring it up**
-```bash
-docker compose --env-file docker/.env \
-  -f docker/docker-compose.yaml \
-  -f docker/docker-compose.ec2-http.override.yaml pull
 
-docker compose --env-file docker/.env \
+Add the `registry` override to pull **all 10** from the vendor registry (no Docker
+Hub) — required if your host can't reach Docker Hub. Drop that `-f` line to pull the
+6 third-party from Docker Hub instead.
+```bash
+CF="--env-file docker/.env \
   -f docker/docker-compose.yaml \
-  -f docker/docker-compose.ec2-http.override.yaml up -d
+  -f docker/docker-compose.ec2-http.override.yaml \
+  -f docker/docker-compose.registry.override.yaml"     # omit for Docker-Hub third-party
+
+docker compose $CF pull
+docker compose $CF up -d
 ```
-The four `daytona-*` server images pull from the vendor registry; the six third-party
-images (dex, minio, otel-collector, registry, registry-ui, jaeger) pull from **Docker
-Hub**. Both need outbound internet — this is the connected path.
+With the `registry` override, all 10 images resolve under your `FORK_REGISTRY` — the 4
+`daytona-*` server images plus the 6 third-party the vendor mirrored (`dex`, `minio`,
+`opentelemetry-collector-contrib`, `docker-registry-ui`, `jaegertracing/all-in-one`,
+`registry`). Without it, only the 4 come from the vendor and the 6 pull from Docker Hub.
 
 **7. Watch it come up**
 ```bash
