@@ -80,6 +80,23 @@ if [ "${SKIP_IMAGES:-0}" = "1" ]; then
 else
   : "${CLIENT_REGISTRY:?Set CLIENT_REGISTRY (or SKIP_IMAGES=1), e.g. <acct>.dkr.ecr.<region>.amazonaws.com}"
   TAG="$TAG" FORK_REGISTRY="$CLIENT_REGISTRY" ./scripts/fork/build-push.sh
+
+  # Default sandbox snapshot (11th image) — opt-in: it versions on its own cadence
+  # (SNAPSHOT_TAG), so it is NOT rebuilt on every server release. Set BUILD_SANDBOX=1
+  # to (re)build + push it into the same build store as the 4 server images.
+  if [ "${BUILD_SANDBOX:-0}" = "1" ]; then
+    FORK_REGISTRY="$CLIENT_REGISTRY" ./scripts/fork/build-sandbox.sh
+  fi
+
+  # Two-stage delivery: if a client-facing release namespace is given, promote all
+  # 11 images (4 server + 6 third-party + sandbox) from the build store
+  # (CLIENT_REGISTRY) into it, so the client pulls everything from one namespace.
+  # The sandbox must already exist in CLIENT_REGISTRY (this run or a prior one).
+  if [ -n "${RELEASE_REGISTRY:-}" ]; then
+    IMAGE_TAG="${TAG//[^A-Za-z0-9._-]/-}"
+    SRC_REGISTRY="$CLIENT_REGISTRY" DST_REGISTRY="$RELEASE_REGISTRY" \
+      FORK_TAG="$IMAGE_TAG" ./scripts/fork/promote.sh
+  fi
 fi
 
 # Append to the compliance ledger (create header if missing).

@@ -4,7 +4,14 @@
 # SPDX-License-Identifier: AGPL-3.0
 #
 # Assemble a single OFFLINE, air-gap BYOC delivery bundle for a client:
-#   - all 10 images saved to images.tar (4 from-source + 6 third-party)
+#   - all 11 images saved to images.tar (4 from-source + 6 third-party + 1 sandbox
+#     snapshot); the sandbox snapshot must be built first (scripts/fork/build-sandbox.sh)
+#     and tagged ${FORK_REGISTRY}/daytona-sandbox:${SNAPSHOT_TAG} — packing fails loudly
+#     if it is absent.
+#
+# FORK_REGISTRY here is the CLIENT-facing RELEASE namespace (e.g.
+# …/ideaboxai-release/<client>) that the client pulls from — the value promote.sh
+# copies into. Not the build store (…/ideaboxai-platform-core).
 #   - the compose files + dex/otel config + .env.example
 #   - an interactive install.sh (loads images, prompts minimal config, brings up)
 #   - the AGPL Corresponding-Source archive + WRITTEN_OFFER + sha256
@@ -33,6 +40,11 @@ FORK_REGISTRY="${FORK_REGISTRY:?Set FORK_REGISTRY (host + namespace of the from-
 FORK_TAG="${FORK_TAG:?Set FORK_TAG, e.g. byoc-actian-20260720-79cb1970f}"
 BYOC_DIR="${BYOC_DIR:?Set BYOC_DIR — where byoc-release.sh wrote the source archive + offer}"
 PLATFORM="${PLATFORM:-linux/amd64}"
+# Copilot sandbox snapshot: friendly name the platform references (DAYTONA_SNAPSHOT_ID)
+# and the version tag of the published image. Overridable at pack time.
+SNAPSHOT_TAG="${SNAPSHOT_TAG:-1.0.2}"
+SNAPSHOT_NAME="daytona-sandbox-v${SNAPSHOT_TAG}"
+SNAPSHOT_IMAGE="${FORK_REGISTRY}/daytona-sandbox:${SNAPSHOT_TAG}"
 
 [ -d "$BYOC_DIR" ] || { echo "!! BYOC_DIR '$BYOC_DIR' not found — run byoc-release.sh first." >&2; exit 1; }
 
@@ -51,6 +63,8 @@ THIRD_PARTY=(
 IMAGES=()
 for svc in "${OURS[@]}"; do IMAGES+=("${FORK_REGISTRY}/daytona-${svc}:${FORK_TAG}"); done
 IMAGES+=("${THIRD_PARTY[@]}")
+# 11th image: the copilot sandbox snapshot, pulled + registered on first boot.
+IMAGES+=("$SNAPSHOT_IMAGE")
 
 STAGE_PARENT="$(mktemp -d)"
 NAME="daytona-${CLIENT}-${FORK_TAG}"
@@ -94,10 +108,12 @@ fi
 echo ">> Rendering install.sh + shipping seed-registry.sh"
 sed -e "s|__FORK_REGISTRY__|${FORK_REGISTRY}|g" \
     -e "s|__FORK_TAG__|${FORK_TAG}|g" \
+    -e "s|__SNAPSHOT_NAME__|${SNAPSHOT_NAME}|g" \
+    -e "s|__SNAPSHOT_TAG__|${SNAPSHOT_TAG}|g" \
     scripts/fork/templates/install.sh > "$STAGE/install.sh"
 chmod +x "$STAGE/install.sh"
 # For clients who mirror into their own registry (e.g. air-gapped with an internal
-# registry): seed-registry.sh loads images.tar and pushes all 10 to their registry.
+# registry): seed-registry.sh loads images.tar and pushes all 11 to their registry.
 cp scripts/fork/templates/seed-registry.sh "$STAGE/seed-registry.sh"
 chmod +x "$STAGE/seed-registry.sh"
 
@@ -117,7 +133,7 @@ Image tag: ${FORK_TAG}   Platform: ${PLATFORM}
    address, generates all secrets, and starts the stack.
 
 Have an internal registry / multiple nodes? Seed it once instead:
-   ./seed-registry.sh    # pushes all 10 images to your registry
+   ./seed-registry.sh    # pushes all 11 images to your registry
    IMAGE_SOURCE=registry FORK_REGISTRY=<prefix> ./install.sh   # on each node
 See docker/CLIENT-INSTALL.md ("Deploy via your own internal registry").
 

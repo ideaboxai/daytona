@@ -326,16 +326,20 @@ Admin user created with API key: ${value}
     }
 
     const defaultSnapshot = this.configService.getOrThrow('defaultSnapshot')
+    // Pull from DEFAULT_SNAPSHOT_IMAGE when provided (e.g. a published registry
+    // image), keeping DEFAULT_SNAPSHOT as the friendly snapshot name that clients
+    // reference. Falls back to name == imageName for the plain case.
+    const defaultSnapshotImage = this.configService.get('defaultSnapshotImage') || defaultSnapshot
 
     await this.snapshotService.createFromPull(
       adminPersonalOrg,
       {
         name: defaultSnapshot,
-        imageName: defaultSnapshot,
+        imageName: defaultSnapshotImage,
       },
       true,
     )
 
-    this.logger.log('Default snapshot created successfully')
+    this.logger.log(`Default snapshot created successfully (name=${defaultSnapshot}, image=${defaultSnapshotImage})`)
   }
 }

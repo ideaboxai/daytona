@@ -61,6 +61,10 @@ const configuration = {
     from: process.env.SMTP_EMAIL_FROM || 'noreply@mail.daytona.io',
   },
   defaultSnapshot: process.env.DEFAULT_SNAPSHOT,
+  // Optional pull image for the default snapshot. When set, the snapshot is
+  // registered under DEFAULT_SNAPSHOT (a friendly name) but pulled from this
+  // ref (e.g. a registry image). Falls back to DEFAULT_SNAPSHOT when unset.
+  defaultSnapshotImage: process.env.DEFAULT_SNAPSHOT_IMAGE,
   dashboardUrl: process.env.DASHBOARD_URL,
   // Default to empty string - dashboard will then hit '/api'
   dashboardBaseApiUrl: process.env.DASHBOARD_BASE_API_URL || '',

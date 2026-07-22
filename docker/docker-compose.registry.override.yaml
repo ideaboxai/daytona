@@ -6,6 +6,10 @@
 # no Docker Hub at deploy. Seed the third-party into the registry first with
 # scripts/fork/mirror-thirdparty.sh (into our ECR) or seed-registry.sh (client's own).
 #
+# The daytona-sandbox default snapshot is an 11th delivered image under ${FORK_REGISTRY}
+# but is NOT a compose service — the runner pulls it at runtime, so install.sh relays it
+# into the on-box registry:6000 and points DEFAULT_SNAPSHOT_IMAGE there. Not repointed here.
+#
 # The third-party repo names MUST match what mirror-thirdparty.sh / seed-registry.sh
 # push (and the ECR repositories DevOps created): dex, docker-registry-ui, registry,
 # jaegertracing/all-in-one, minio, opentelemetry-collector-contrib. NB the names are

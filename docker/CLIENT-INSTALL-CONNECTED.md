@@ -75,8 +75,10 @@ IMAGE_SOURCE=registry ./install.sh
 
 When prompted, use the vendor's registry host+namespace as the image source and this
 host's address. After it starts, **pull happens on first `up`**. With `IMAGE_SOURCE=
-registry`, install.sh adds the `registry` override so **all 10** resolve under your
-`FORK_REGISTRY`; without it, only the 4 server images do. Then jump to **Verify**.
+registry`, install.sh adds the `registry` override so **all 10** compose images resolve
+under your `FORK_REGISTRY`; without it, only the 4 server images do. The 11th image, the
+`daytona-sandbox` default snapshot, is pulled from `FORK_REGISTRY` by install.sh and relayed
+into the on-box `registry:6000` (the runner pulls it there). Then jump to **Verify**.
 
 The manual steps below are for a bespoke setup (e.g. HTTPS behind your own domain) or
 if you'd rather configure by hand.
