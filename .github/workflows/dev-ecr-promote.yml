@@ -1,0 +1,103 @@
+name: Promote Daytona Images to Client Release Namespace (OIDC)
+
+# Two-stage delivery, stage 2: copy the 11 delivered images from the build store
+# (ideaboxai-platform-core) into a client's release namespace (e.g. ideaboxai-release/
+# <client>) via GitHub OIDC — no static AWS keys. Registry-to-registry manifest copy
+# (docker buildx imagetools create), so every architecture is preserved.
+#
+# Re-tagging: the 10 stack images (4 server + 6 third-party) unify to release_tag
+# (e.g. 1.4.32, per v1.4.32.md). The sandbox versions on its OWN cadence, so it keeps
+# its snapshot_tag (e.g. 1.0.2) — it is NOT swept into release_tag.
+#
+# ⚠ Needs the OIDC DEPLOY role to be granted ECR push on the DESTINATION namespace
+# (release/<client>/*), in addition to read on platform-core/*. A developer SSO role is
+# NOT enough (push to release/* is locked down). If the deploy role lacks it, the push
+# fails 403 (ecr:InitiateLayerUpload denied) — that is a DevOps grant, not a code fix.
+#
+# Run from `main` (deploy role). Other branches assume the read-only plan role (copy
+# will fail at push — expected; use main to actually promote).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dst_namespace:
+        description: "Client release namespace under the ECR host (e.g. ideaboxai-release/actian)"
+        type: string
+        required: true
+        default: "ideaboxai-release/actian"
+      server_tag:
+        description: "Source tag of the 4 server images in platform-core (e.g. 0.1.2)"
+        type: string
+        default: "0.1.2"
+      release_tag:
+        description: "Unified client tag for the 10 stack images (e.g. 1.4.32)"
+        type: string
+        required: true
+        default: "1.4.32"
+      snapshot_tag:
+        description: "Sandbox tag — independent, kept as-is source→dest (e.g. 1.0.2)"
+        type: string
+        default: "1.0.2"
+
+permissions:
+  id-token: write       # required for OIDC
+  contents: read
+
+jobs:
+  promote:
+    environment: cicd
+    runs-on: ideaboxai-deploy-small
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC, no static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # main → deploy role (push); other branches → plan role (read-only, push will 403)
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Promote (registry-to-registry, re-tag)
+        env:
+          SERVER_TAG: ${{ inputs.server_tag }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+          DST_NS: ${{ inputs.dst_namespace }}
+        run: |
+          set -euo pipefail
+          HOST="${ECR_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          SRC="${HOST}/ideaboxai-platform-core"
+          DST="${HOST}/${DST_NS}"
+
+          # repo | SOURCE tag (in platform-core) | DEST tag (in release namespace)
+          ENTRIES=(
+            "daytona-api|${SERVER_TAG}|${RELEASE_TAG}"
+            "daytona-proxy|${SERVER_TAG}|${RELEASE_TAG}"
+            "daytona-runner|${SERVER_TAG}|${RELEASE_TAG}"
+            "daytona-ssh-gateway|${SERVER_TAG}|${RELEASE_TAG}"
+            "dex|v2.42.0|${RELEASE_TAG}"
+            "docker-registry-ui|main|${RELEASE_TAG}"
+            "registry|2.8.2|${RELEASE_TAG}"
+            "jaegertracing/all-in-one|1.67.0|${RELEASE_TAG}"
+            "minio|latest|${RELEASE_TAG}"
+            "opentelemetry-collector-contrib|0.138.0|${RELEASE_TAG}"
+            "daytona-sandbox|${SNAPSHOT_TAG}|${SNAPSHOT_TAG}"
+          )
+
+          echo "## Promote ${SRC} -> ${DST}" >> "$GITHUB_STEP_SUMMARY"
+          for e in "${ENTRIES[@]}"; do
+            repo="${e%%|*}"; rest="${e#*|}"; s="${rest%%|*}"; d="${rest##*|}"
+            echo ">> ${SRC}/${repo}:${s} -> ${DST}/${repo}:${d}"
+            docker buildx imagetools create --tag "${DST}/${repo}:${d}" "${SRC}/${repo}:${s}"
+            digest="$(docker buildx imagetools inspect "${DST}/${repo}:${d}" --format '{{.Manifest.Digest}}')"
+            echo "- \`${DST}/${repo}:${d}\` @ ${digest}" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo ">> Promoted ${#ENTRIES[@]} images."
