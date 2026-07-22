@@ -56,6 +56,11 @@ jobs:
     environment: cicd
     # Self-hosted runner inside the cluster (private ECR is not reachable from public runners).
     runs-on: ideaboxai-deploy-small
+    # The api image is ~5.6 GB; on the small self-hosted runner a heavy build can
+    # exhaust disk/build-cache and the "Build image" step ends up CANCELLED (runner
+    # loss). Cap the job so a stuck build fails fast instead of hanging. If this still
+    # cancels, the api leg needs a larger runner (memory) — that is a DevOps change.
+    timeout-minutes: 45
     strategy:
       # One service failing should not cancel the other three — a partial push is
       # recoverable (digests are per-image), a cancelled run tells you less.
@@ -155,6 +160,15 @@ jobs:
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
+
+      # Reclaim build cache/disk before the build. The small self-hosted runner is
+      # shared across matrix legs; the heavy api build is the one that fills it. Prune
+      # build cache + dangling images only (NOT named volumes other jobs may use).
+      - name: Reclaim build disk
+        run: |
+          docker builder prune -af || true
+          docker image prune -f || true
+          df -h || true
 
       - name: Build image
         env:
