@@ -39,6 +39,7 @@ source archive you were given.
 ### Bootstrap a fresh host (Ubuntu)
 
 If starting from an empty VM:
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y docker.io docker-compose-plugin awscli
@@ -75,18 +76,22 @@ instead of `docker load`-ing the tarball on every host.
 
 **1. Seed your registry** — once, from a host that has the bundle and can reach the
 registry. Log in first if it needs auth:
+
 ```bash
 docker login <your-registry-host>      # if required
 ./seed-registry.sh                     # asks for the registry host + namespace
 ```
+
 It loads `images.tar` and pushes all 11 images (4 Daytona server + 6 third-party + the
 `daytona-sandbox` default snapshot) to `<registry-host>/<namespace>/...`, then prints the
 `FORK_REGISTRY` value to use.
 
 **2. Deploy on each node** — pull everything from your registry, no tarball:
+
 ```bash
 IMAGE_SOURCE=registry FORK_REGISTRY=<prefix from step 1> ./install.sh
 ```
+
 `install.sh` skips the offline load and brings the stack up with the
 `registry` override, so **all 10 compose images** come from your registry — no Docker
 Hub, no vendor ECR. (The 11th image, the `daytona-sandbox` default snapshot, is not a
@@ -96,6 +101,7 @@ Then jump to **Verify**.
 ## Manual install (alternative)
 
 **1. Extract the source archive and enter it**
+
 ```bash
 tar xzf daytona-src-<client>-<sha>.tar.gz
 cd daytona-<sha>
@@ -103,25 +109,31 @@ cd daytona-<sha>
 
 **2. Log in to the vendor registry** (your creds; pull is authorized by the vendor's
 repository policy). The registry host and image tag were given to you:
+
 ```bash
 aws ecr get-login-password --region <VENDOR_REGION> \
   | docker login --username AWS --password-stdin <VENDOR_REGISTRY_HOST>
 ```
 
 **3. Create Daytona's own database** on your Postgres:
+
 ```sql
 CREATE DATABASE daytona;
 CREATE USER daytona WITH PASSWORD '<pick-one>';
 GRANT ALL PRIVILEGES ON DATABASE daytona TO daytona;
 ```
+
 And confirm Redis is non-cluster: `redis-cli -h <host> INFO cluster` → `cluster_enabled:0`.
 
 **4. Configure `docker/.env`**
+
 ```bash
 cp docker/.env.example docker/.env
 ```
+
 Set the image source (values provided with your delivery), your datastores, and the
 host address:
+
 ```bash
 FORK_REGISTRY=<VENDOR_REGISTRY_HOST>/<namespace>
 FORK_TAG=<the image tag provided, e.g. byoc-<client>-<date>-<sha>>
@@ -139,27 +151,31 @@ REDIS_TLS=true               # false if your Redis has no TLS
 
 SSH_GATEWAY_HOST=<this host's public IP>
 ```
+
 Generate every remaining `CHANGEME` secret with `openssl rand -hex 32`, and the SSH
 keys per the comments in the file. If your Postgres needs TLS, put its CA at
 `docker/certs/rds-ca-bundle.pem`.
 
 **5. Pick an access mode**
 
-*HTTP over the host IP (fastest, no TLS)* — generate the IP-based dex config:
+_HTTP over the host IP (fastest, no TLS)_ — generate the IP-based dex config:
+
 ```bash
 sed -e "s#https://sandbox.ideaboxai.com/dex#http://$EC2_HOST:5556/dex#g" \
     -e "s#https://proxy.sandbox.ideaboxai.com#http://$EC2_HOST:4003#g" \
     -e "s#https://sandbox.ideaboxai.com#http://$EC2_HOST:3002#g" \
     docker/dex/config.yaml > docker/dex/config.ec2.yaml
 ```
+
 Bring up with the HTTP override:
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml \
   -f docker/docker-compose.ec2-http.override.yaml up -d
 ```
 
-*HTTPS behind your own domain + load balancer (production)* — terminate TLS at your
+_HTTPS behind your own domain + load balancer (production)_ — terminate TLS at your
 LB and forward `X-Forwarded-Proto: https`. Set the public URLs (`PUBLIC_OIDC_DOMAIN`,
 `DASHBOARD_URL`, `PROXY_DOMAIN`, etc.) and the dex `issuer`/`redirectURIs` to your
 domain, keep `PROXY_PROTOCOL=https`. See the "Reverse proxy / TLS" section in
@@ -167,11 +183,13 @@ domain, keep `PROXY_PROTOCOL=https`. See the "Reverse proxy / TLS" section in
 the image override you were given.
 
 **6. Watch it come up**
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml \
   -f docker/docker-compose.ec2-http.override.yaml logs -f api
 ```
+
 Wait for `🚀 Daytona API is running on: http://0.0.0.0:3002/api`. The api needs
 Postgres, Redis, dex, minio, otel-collector, and a healthy runner — if it
 crash-loops, the log names the missing one.
@@ -187,11 +205,13 @@ Booting is necessary but not sufficient — confirm a sandbox actually works, si
 is what your application consumes.
 
 1. **All services up:**
+
    ```bash
    docker compose --env-file docker/.env \
      -f docker/docker-compose.yaml \
      -f docker/docker-compose.ec2-http.override.yaml ps
    ```
+
    `api`, `proxy`, `runner`, `ssh-gateway`, `dex`, `minio`, `otel-collector`,
    `registry` should be running; `api` reachable.
 

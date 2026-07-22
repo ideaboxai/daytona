@@ -86,30 +86,37 @@ if you'd rather configure by hand.
 ## Manual install (alternative)
 
 **1. Extract the source archive and enter it**
+
 ```bash
 tar xzf daytona-src-<client>-<sha>.tar.gz
 cd daytona-<sha>
 ```
 
 **2. Log in to the vendor registry**
+
 ```bash
 aws ecr get-login-password --region <REGION> \
   | docker login --username AWS --password-stdin <REGISTRY_HOST>
 ```
 
 **3. Create Daytona's own database** on your Postgres:
+
 ```sql
 CREATE DATABASE daytona;
 CREATE USER daytona WITH PASSWORD '<pick-one>';
 GRANT ALL PRIVILEGES ON DATABASE daytona TO daytona;
 ```
+
 Confirm Redis is non-cluster: `redis-cli -h <host> INFO cluster` → `cluster_enabled:0`.
 
 **4. Configure `docker/.env`**
+
 ```bash
 cp docker/.env.example docker/.env
 ```
+
 Set the image source (from your delivery), datastores, and host address:
+
 ```bash
 FORK_REGISTRY=<REGISTRY_HOST>/<namespace>       # e.g. 120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core
 FORK_TAG=<the image tag provided>               # e.g. fork-YYYYMMDD-<sha>
@@ -127,11 +134,13 @@ REDIS_TLS=true               # false if your Redis has no TLS
 
 SSH_GATEWAY_HOST=<this host's public IP>
 ```
+
 Generate every remaining `CHANGEME` secret with `openssl rand -hex 32`, and the SSH
 keys per the comments in the file. If your Postgres needs TLS, put its CA at
 `docker/certs/rds-ca-bundle.pem`.
 
 **5. Generate the IP-based dex config** (HTTP over the host IP):
+
 ```bash
 EC2_HOST=<this host's public IP>
 sed -e "s#https://sandbox.ideaboxai.com/dex#http://$EC2_HOST:5556/dex#g" \
@@ -139,6 +148,7 @@ sed -e "s#https://sandbox.ideaboxai.com/dex#http://$EC2_HOST:5556/dex#g" \
     -e "s#https://sandbox.ideaboxai.com#http://$EC2_HOST:3002#g" \
     docker/dex/config.yaml > docker/dex/config.ec2.yaml
 ```
+
 For **HTTPS behind your own domain + load balancer**: terminate TLS at your LB,
 forward `X-Forwarded-Proto: https`, set the public URLs and the dex
 `issuer`/`redirectURIs` to your domain, keep `PROXY_PROTOCOL=https`. See the
@@ -149,6 +159,7 @@ forward `X-Forwarded-Proto: https`, set the public URLs and the dex
 Add the `registry` override to pull **all 10** from the vendor registry (no Docker
 Hub) — required if your host can't reach Docker Hub. Drop that `-f` line to pull the
 6 third-party from Docker Hub instead.
+
 ```bash
 CF="--env-file docker/.env \
   -f docker/docker-compose.yaml \
@@ -158,17 +169,20 @@ CF="--env-file docker/.env \
 docker compose $CF pull
 docker compose $CF up -d
 ```
+
 With the `registry` override, all 10 images resolve under your `FORK_REGISTRY` — the 4
 `daytona-*` server images plus the 6 third-party the vendor mirrored (`dex`, `minio`,
 `opentelemetry-collector-contrib`, `docker-registry-ui`, `jaegertracing/all-in-one`,
 `registry`). Without it, only the 4 come from the vendor and the 6 pull from Docker Hub.
 
 **7. Watch it come up**
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml \
   -f docker/docker-compose.ec2-http.override.yaml logs -f api
 ```
+
 Wait for `🚀 Daytona API is running on: http://0.0.0.0:3002/api`. The api needs
 Postgres, Redis, dex, minio, otel-collector, and a healthy runner — if it
 crash-loops, the log names the missing one.
@@ -184,11 +198,13 @@ Booting is necessary but not sufficient — confirm a sandbox actually works, si
 is what your application consumes.
 
 1. **All services up:**
+
    ```bash
    docker compose --env-file docker/.env \
      -f docker/docker-compose.yaml \
      -f docker/docker-compose.ec2-http.override.yaml ps
    ```
+
    `api`, `proxy`, `runner`, `ssh-gateway`, `dex`, `minio`, `otel-collector`,
    `registry` running; `api` and `proxy` should report **healthy**.
 
