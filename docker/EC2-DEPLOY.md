@@ -15,7 +15,7 @@ onto one EC2 box over plain HTTP. Not production — no TLS. Uses
 
 **1. Give Daytona its OWN Postgres database — never point at an app's existing DB.**
 Daytona runs migrations on boot (`RUN_MIGRATIONS=true`) and will create/alter its
-own tables. Sharing the *instance* is fine; sharing a *database* corrupts things.
+own tables. Sharing the _instance_ is fine; sharing a _database_ corrupts things.
 On the prod Postgres:
 
 ```sql
@@ -70,7 +70,7 @@ This repo is **private**, so the box has no GitHub access by default. Simplest �
 scp -r docker <user>@<host>:~/
 ```
 
-Only if the box *does* have GitHub auth (SSH deploy key or a PAT) can you sparse-checkout
+Only if the box _does_ have GitHub auth (SSH deploy key or a PAT) can you sparse-checkout
 instead:
 
 ```bash

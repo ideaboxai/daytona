@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # Mirror the (now-frozen) upstream daytonaio/daytona repo into our own git host
 # and repoint this clone's remotes: origin -> our fork, upstream -> read-only.
 #

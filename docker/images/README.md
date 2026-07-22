@@ -16,6 +16,7 @@ redundant — each trades something:
 | **wrappers** (`build-image-wrappers.sh`) | Re-base prebuilt + add `USER` | ✅ replayed | ✅ if built with buildx | ❌ | light |
 
 ¹ build-push.sh is single-arch because it compiles locally; add an arm64 runner
+
 + manifest merge for both.
 
 The wrapper is the **middle path**: you get the non-root runtime hardening the
@@ -27,10 +28,10 @@ not shipping to a BYOC client.
 
 Nothing but the hardening from `edda70ca8`, matched to each image's base:
 
-- **[api.Dockerfile](api.Dockerfile)** — `USER node` (uid 1000, already in `node:24-slim`).
-- **[proxy.Dockerfile](proxy.Dockerfile)** — `adduser appuser` + `USER appuser` (`alpine:3.22` has no non-root user).
-- **[ssh-gateway.Dockerfile](ssh-gateway.Dockerfile)** — same as proxy.
-- **[runner.Dockerfile](runner.Dockerfile)** — **nothing.** The runner must stay
++ **[api.Dockerfile](api.Dockerfile)** — `USER node` (uid 1000, already in `node:24-slim`).
++ **[proxy.Dockerfile](proxy.Dockerfile)** — `adduser appuser` + `USER appuser` (`alpine:3.22` has no non-root user).
++ **[ssh-gateway.Dockerfile](ssh-gateway.Dockerfile)** — same as proxy.
++ **[runner.Dockerfile](runner.Dockerfile)** — **nothing.** The runner must stay
   root: it hosts the privileged Docker-in-Docker daemon that runs sandboxes. It
   exists only so all four images come from one uniform pipeline. Isolation is at
   the sandbox boundary, not the runner's own user.

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright 2025 Daytona Platforms Inc.
+# SPDX-License-Identifier: AGPL-3.0
+#
 # BYOC release: cut ONE immutable deploy point for a client and produce the
 # AGPL-3.0 Corresponding Source handoff for the Daytona SERVER we convey to them.
 #
