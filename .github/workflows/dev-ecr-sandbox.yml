@@ -1,0 +1,110 @@
+name: Build & Push Daytona Sandbox Snapshot to Dev ECR (OIDC)
+
+# Builds the default sandbox base image (images/daytona-sandbox) and pushes it to
+# ideaboxai-platform-core/daytona-sandbox via GitHub OIDC — no static AWS keys.
+# Companion to dev-ecr-oidc.yml (the four server images); kept SEPARATE because the
+# snapshot versions on its OWN cadence (SNAPSHOT_TAG, default 1.0.2) — it is not
+# rebuilt on every server release. Same `cicd` environment + deploy-vs-plan role split.
+#
+# Version: a semver MAJOR.MINOR.PATCH snapshot tag (the cluster's Kyverno policy
+# rejects :latest and commit-hash-only tags). Default 1.0.2; override via the
+# snapshot_version input. This is the sandbox's own version, NOT the repo VERSION file.
+#
+# ⚠ Requires the same onboarding as dev-ecr-oidc.yml (cicd env vars, IAM trust on the
+# deploy/plan roles, push grant on ideaboxai-platform-core/*) AND the
+# ideaboxai-platform-core/daytona-sandbox ECR repo to exist (ECR never auto-creates).
+#
+# To PUSH, run from `main` (deploy role). Other branches assume the read-only plan
+# role and build only — safe to test from a branch.
+#
+# ARCHITECTURE: single-arch, matching the runner (amd64). The deploy target must match
+# it — an amd64 image will not run on Graviton. For arm64, add a matrix leg on an
+# arm64 self-hosted runner and merge with `docker buildx imagetools create`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_version:
+        description: "Sandbox snapshot tag (semver MAJOR.MINOR.PATCH). Default 1.0.2."
+        type: string
+        default: "1.0.2"
+
+permissions:
+  id-token: write       # required for OIDC
+  contents: read
+
+jobs:
+  build-and-push:
+    # `cicd` environment ties this job to the OIDC trust policy (repo + environment).
+    environment: cicd
+    # Self-hosted runner inside the cluster (private ECR is not reachable from public runners).
+    runs-on: ideaboxai-deploy-small
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
+      ECR_REPOSITORY: ideaboxai-platform-core/daytona-sandbox
+      COMMIT_SHA: ${{ github.sha }}
+    steps:
+      # persist-credentials: false — authenticates to AWS via OIDC, never writes back
+      # to git; also sidesteps the flaky self-hosted post-checkout cleanup.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate snapshot version
+        id: ver
+        run: |
+          V="${{ inputs.snapshot_version }}"
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::snapshot_version '$V' is not valid semver (MAJOR.MINOR.PATCH)"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC, no static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # main → deploy role (ECR push); other branches → plan role (read-only build)
+          role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Mirrors scripts/fork/build-sandbox.sh, but with the push gated on main so a
+      # branch run (read-only plan role) builds only. Context = images/daytona-sandbox
+      # (Dockerfile + requirements-frozen.txt); no VERSION arg / go.work / computer-use.
+      - name: Build image
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          IMAGE_BASE="${ECR_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+          docker build \
+            -t "${IMAGE_BASE}:${IMAGE_VERSION}" \
+            -t "${IMAGE_BASE}:${IMAGE_VERSION}-${COMMIT_SHA::7}" \
+            -f images/daytona-sandbox/Dockerfile images/daytona-sandbox
+          echo "IMAGE_BASE=${IMAGE_BASE}" >> "$GITHUB_ENV"
+
+      - name: Push image (main only — plan role is read-only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          docker push "${IMAGE_BASE}:${IMAGE_VERSION}"
+          docker push "${IMAGE_BASE}:${IMAGE_VERSION}-${COMMIT_SHA::7}"
+          echo "Pushed ${IMAGE_BASE}:${IMAGE_VERSION} (+ ${IMAGE_VERSION}-${COMMIT_SHA::7})"
+
+      # The digest is what docker/.env's DEFAULT_SNAPSHOT_IMAGE can pin; reading it
+      # back from the registry is the only authoritative source.
+      - name: Report immutable digest
+        if: github.ref == 'refs/heads/main'
+        env:
+          IMAGE_VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE_BASE}:${IMAGE_VERSION}" --format '{{.Manifest.Digest}}')"
+          echo "${ECR_REPOSITORY}@${DIGEST}"
+          {
+            echo "### daytona-sandbox"
+            echo '```'
+            echo "${IMAGE_BASE}@${DIGEST}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
