@@ -11,8 +11,8 @@ We self-host Daytona on EC2. **Legally we are fine indefinitely:** the code is *
 (`LICENSE`) and AGPL grants are irrevocable — Daytona cannot revoke the license on code already
 released. We may run, modify, and fork it forever.
 
-- **AGPL obligation:** only if we run a *modified* version and offer it *over a network to third
-  parties* must we publish our source. Internal-only use carries no publication obligation.
+- **AGPL obligation:** only if we run a _modified_ version and offer it _over a network to third
+  parties_ must we publish our source. Internal-only use carries no publication obligation.
 - The risks are **operational, not legal**: no upstream security patches, and Docker Hub images /
   upstream git could disappear. This fork removes those dependencies.
 
@@ -110,7 +110,7 @@ durability, source these from AWS SSM Parameter Store / Secrets Manager rather t
 
 ## BYOC — conveying Daytona to a client (AGPL-3.0)
 
-Deploying the Daytona **server** onto a client's servers is *conveying* under
+Deploying the Daytona **server** onto a client's servers is _conveying_ under
 AGPL-3.0: that client must receive the complete Corresponding Source of the exact
 version running. This is separate from our SaaS use and is the one hard AGPL
 obligation for BYOC.

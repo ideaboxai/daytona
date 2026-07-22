@@ -3,10 +3,12 @@
 # Copyright 2025 Daytona Platforms Inc.
 # SPDX-License-Identifier: AGPL-3.0
 #
-# Seed the client's OWN internal registry with all 10 Daytona images from the
-# offline bundle. Run ONCE, on a host that has the bundle AND can reach the
-# internal registry. Afterwards every node pulls all 10 images from that registry —
-# no Docker Hub, no vendor ECR at deploy.
+# Seed the client's OWN internal registry with all 11 Daytona images from the
+# offline bundle (10 compose images + the daytona-sandbox default snapshot). Run
+# ONCE, on a host that has the bundle AND can reach the internal registry. Afterwards
+# every node pulls all 11 images from that registry — no Docker Hub, no vendor ECR at
+# deploy. (The default snapshot is additionally relayed into each node's on-box
+# registry:6000 by install.sh, which is where the runner pulls it from.)
 #
 # Reads IMAGES.txt (shipped in the bundle), loads images.tar, retags each image to
 # <registry-prefix>/<leaf>, and pushes. The leaf paths match exactly what the
@@ -34,7 +36,7 @@ if [ -f images.tar ]; then
   echo ">> Loading images from images.tar (offline)…"
   docker load -i images.tar
 else
-  echo ">> images.tar not present — assuming the 10 images are already loaded locally."
+  echo ">> images.tar not present — assuming the 11 images are already loaded locally."
 fi
 
 # --- retag + push each image to <PREFIX>/<leaf> ---------------------------

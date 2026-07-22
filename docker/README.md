@@ -59,7 +59,7 @@ by choice:
 
 2. Create Daytona's database. It runs TypeORM migrations on boot
    (`RUN_MIGRATIONS=true`), so it needs its own database — sharing a Postgres
-   *instance* is fine, sharing a *database* is not:
+   _instance_ is fine, sharing a _database_ is not:
 
    ```sql
    CREATE DATABASE daytona;

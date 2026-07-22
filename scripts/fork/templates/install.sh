@@ -23,6 +23,10 @@ DRY_RUN="${DRY_RUN:-0}"
 IMAGE_SOURCE="${IMAGE_SOURCE:-bundle}"
 FORK_REGISTRY="${FORK_REGISTRY:-__FORK_REGISTRY__}"
 FORK_TAG="${FORK_TAG:-__FORK_TAG__}"
+# Copilot sandbox snapshot: friendly name the platform references, and the tag of the
+# published image (pulled from ${FORK_REGISTRY}/daytona-sandbox and registered on boot).
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-__SNAPSHOT_NAME__}"
+SNAPSHOT_TAG="${SNAPSHOT_TAG:-__SNAPSHOT_TAG__}"
 ENV="docker/.env"
 COMPOSE=(docker compose --env-file "$ENV"
   -f docker/docker-compose.yaml
@@ -89,6 +93,14 @@ set_env FORK_TAG      "$FORK_TAG"
 set_env EC2_HOST      "$HOST"
 set_env SSH_GATEWAY_HOST "$HOST"
 
+# Default sandbox snapshot — registered under the friendly name on first boot. The
+# runner is DinD and cannot use the host's registry login, so the API must pull the
+# snapshot from a registry it already has creds for: the on-box internal registry
+# (registry:6000). Step 6b relays the image there after the stack is up; point
+# DEFAULT_SNAPSHOT_IMAGE at that internal path (NOT the ECR/FORK_REGISTRY ref).
+set_env DEFAULT_SNAPSHOT       "$SNAPSHOT_NAME"
+set_env DEFAULT_SNAPSHOT_IMAGE "registry:6000/daytona/daytona-sandbox:${SNAPSHOT_TAG}"
+
 set_env DB_HOST "$DB_HOST"; set_env DB_USERNAME "$DB_USER"; set_env DB_PASSWORD "$DB_PASS"
 set_env DB_DATABASE daytona; set_env DB_TLS_ENABLED "$DB_TLS"
 set_env REDIS_HOST "$REDIS_HOST"; set_env REDIS_PASSWORD "$REDIS_PASS"; set_env REDIS_TLS "$REDIS_TLS"
@@ -100,6 +112,11 @@ for k in ENCRYPTION_KEY ENCRYPTION_SALT REGISTRY_PASSWORD MINIO_ROOT_PASSWORD \
          OTEL_COLLECTOR_API_KEY HEALTH_CHECK_API_KEY; do
   need "$k" && set_env "$k" "$(gen)"
 done
+# Admin/personal-org API key, seeded verbatim on first boot. The SDK and the
+# platform authenticate with this exact value; the api crash-loops if it's unset.
+# dtn_ prefix matches the server's own key format. To share a pre-agreed secret
+# with the platform, set ADMIN_API_KEY in docker/.env before running — this keeps it.
+need ADMIN_API_KEY && set_env ADMIN_API_KEY "dtn_$(gen)"
 
 # SSH gateway keypair + host key (base64), generated once
 if need SSH_PRIVATE_KEY; then
@@ -154,6 +171,32 @@ read -rp "Press Enter to bring the stack up (Ctrl-C to abort)…" _
 
 # --- 6. Up ----------------------------------------------------------------
 "${COMPOSE[@]}" up -d
+
+# --- 6b. Relay the sandbox snapshot into the internal registry ------------
+# The runner is DinD: it pulls the default snapshot from a registry the API holds
+# credentials for — the internal registry:6000 (where DEFAULT_SNAPSHOT_IMAGE points)
+# — NOT from ECR via the host's docker login. So push the daytona-sandbox image
+# (loaded from the bundle, or pulled from FORK_REGISTRY in registry mode) into
+# registry:6000, published on the host at 127.0.0.1:6000. The API's
+# initializeDefaultSnapshot retries for ~60 min, so this may land after the api boots.
+SANDBOX_SRC="${FORK_REGISTRY}/daytona-sandbox:${SNAPSHOT_TAG}"
+SANDBOX_DST="127.0.0.1:6000/daytona/daytona-sandbox:${SNAPSHOT_TAG}"
+if ! docker image inspect "$SANDBOX_SRC" >/dev/null 2>&1; then
+  echo ">> Pulling sandbox snapshot $SANDBOX_SRC"
+  docker pull "$SANDBOX_SRC"
+fi
+docker tag "$SANDBOX_SRC" "$SANDBOX_DST"
+echo ">> Relaying sandbox snapshot into internal registry (registry:6000)…"
+pushed=0
+for i in $(seq 1 30); do
+  if docker push "$SANDBOX_DST" >/dev/null 2>&1; then
+    echo ">> Sandbox snapshot pushed — the default snapshot will activate on the runner."
+    pushed=1; break
+  fi
+  sleep 2
+done
+[ "$pushed" = 1 ] || echo "!! registry:6000 did not accept the push after 60s; the default snapshot stays pending. Retry: docker push $SANDBOX_DST" >&2
+
 echo
 echo ">> Started. Watch the api boot:"
 echo "   docker compose --env-file docker/.env -f docker/docker-compose.yaml \\"
@@ -161,3 +204,10 @@ echo "     -f docker/docker-compose.ec2-http.override.yaml logs -f api"
 echo "   (wait for: 🚀 Daytona API is running)"
 echo ">> Dashboard: http://$HOST:3002/dashboard   (dev@daytona.io / password)"
 echo ">> Change that password in docker/dex/config.ec2.yaml before real use."
+echo
+echo ">> API key (seeded on first boot — the SDK/platform authenticate with this):"
+echo "   ADMIN_API_KEY=$(grep '^ADMIN_API_KEY=' "$ENV" | cut -d= -f2-)"
+echo "   Set this as the platform's DAYTONA_API_KEY (DAYTONA_API_URL=http://$HOST:3002/api)."
+echo ">> Default sandbox snapshot '$SNAPSHOT_NAME' registers automatically on first boot"
+echo "   (relayed into registry:6000; the runner pulls it there — no ECR creds needed)."
+echo "   The platform references it as DAYTONA_SNAPSHOT_ID=$SNAPSHOT_NAME."

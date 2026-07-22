@@ -19,11 +19,12 @@ Daytona sandbox SERVER (AGPL-3.0)  ← we deliver + they run as infra
 - Only the **Daytona server** is AGPL. Our app uses the **SDK over the API** — no
   copyleft reach — so the app stays proprietary. **Never** weld app code into the
   server; integrate only via SDK/API.
-- Delivering the server to a client is *conveying* under AGPL-3.0 → the client must
+- Delivering the server to a client is _conveying_ under AGPL-3.0 → the client must
   receive the **Corresponding Source** of the exact version. `byoc-release.sh`
   automates that.
 
 **A release produces (per client):**
+
 | Artifact | What | Where |
 |---|---|---|
 | Git tag `byoc/<client>/<date>-<sha>` | immutable deploy point | pushed to origin |
@@ -80,6 +81,7 @@ in this account).
 **B. An account you hold push creds for (e.g. `304038454586`/`ideaboxai`).**
 Run `build-push.sh` directly, **from the tagged commit** so the image matches the
 source you hand over:
+
 ```bash
 git fetch origin --tags && git checkout byoc/<client>/<date>-<sha>
 aws ecr get-login-password --region us-east-1 \
@@ -88,15 +90,17 @@ TAG=byoc/<client>/<date>-<sha> \
 FORK_REGISTRY=<ACCT>.dkr.ecr.us-east-1.amazonaws.com/<namespace> \
   ./scripts/fork/build-push.sh
 ```
+
 `build-push.sh` sanitizes the tag's `/` → `-` (Docker tags forbid `/`), so images push
 as `byoc-<client>-<date>-<sha>`.
 
-> **The #1 gotcha:** `build-push.sh` preflight saying *"Missing ECR repositories"* when
+> **The #1 gotcha:** `build-push.sh` preflight saying _"Missing ECR repositories"_ when
 > the repos clearly exist almost always means **you're authed to the wrong account** —
-> `describe-repositories` queries the *caller's* account. Check `aws sts
+> `describe-repositories` queries the _caller's_ account. Check `aws sts
 > get-caller-identity` matches the registry account before anything else.
 
 Verify the pushed images are the hardened from-source ones (not a mirror):
+
 ```bash
 docker image inspect <ACCT>.../daytona-api:byoc-... --format '{{.Config.User}}'   # -> node
 docker image inspect <ACCT>.../daytona-proxy:byoc-... --format '{{.Config.User}}' # -> appuser
@@ -132,9 +136,11 @@ client's network can reach Docker Hub.
 
 **If the client canNOT reach Docker Hub (e.g. actian) — mirror the 6 third-party into
 our ECR too, so all 10 live there:**
+
 ```bash
 FORK_REGISTRY=<host>/<namespace> ./scripts/fork/mirror-thirdparty.sh   # 6 third-party -> our ECR
 ```
+
 This pushes to the repos `dex`, `docker-registry-ui`, `registry`,
 `jaegertracing/all-in-one`, `minio`, `opentelemetry-collector-contrib` — matching
 `docker-compose.registry.override.yaml`. The client deploys with `IMAGE_SOURCE=registry`
@@ -143,6 +149,7 @@ repos below (add the 6 third-party repo names to the loop).
 
 **Grant cross-account pull** (revocable; never push). For the actian case list all 10
 repos; for a Hub-connected client, just the 4 `daytona-*`:
+
 ```bash
 for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway \
             dex docker-registry-ui registry jaegertracing/all-in-one minio \
@@ -156,6 +163,7 @@ for repo in daytona-api daytona-proxy daytona-runner daytona-ssh-gateway \
         "Action":["ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:BatchCheckLayerAvailability"]}]}'
 done
 ```
+
 Hand the client `docker/CLIENT-INSTALL-CONNECTED.md` + the registry host / namespace /
 tag / region. (To push into the client's OWN ECR instead, point `FORK_REGISTRY` at
 theirs in §3 and skip the grant.)
@@ -169,6 +177,7 @@ artifacts** (source archive + image pull), **their-style datastores** (throwaway
 not our prod), and finish with a **sandbox functional test**.
 
 ### 5a. Bootstrap an empty EC2 (Ubuntu)
+
 ```bash
 # Docker + compose plugin + aws cli
 sudo apt-get update
@@ -181,10 +190,12 @@ wget -q https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.de
 sudo apt-get install -y ./mount-s3.deb
 ls -l /usr/bin/mount-s3 /dev/fuse     # both must exist
 ```
+
 The host also needs **ECR pull access** to the registry from §3/§4 (instance role, or
 `aws configure` with creds that can pull).
 
 ### 5b. Throwaway datastores (simulate the client's managed Postgres/Redis)
+
 ```bash
 docker network create actian-net
 docker run -d --name pg --network actian-net -e POSTGRES_USER=daytona \
@@ -193,6 +204,7 @@ docker run -d --name redis --network actian-net redis:7
 ```
 
 ### 5c. Receive artifacts as the client would (no clone)
+
 ```bash
 mkdir ~/rehearsal && cd ~/rehearsal
 # copy in the delivered bundle (scp), OR regenerate from the tag if this host has the repo:
@@ -204,31 +216,37 @@ cd daytona-<sha>
 ```
 
 ### 5d. Configure + bring up
+
 Follow `docker/CLIENT-INSTALL.md` from step 2: `docker login`, fill `docker/.env`
 (`FORK_TAG=byoc-<client>-...`, `DB_HOST=pg`, `REDIS_HOST=redis`, TLS off, `EC2_HOST`),
 generate the dex IP config, and:
+
 ```bash
 docker compose --env-file docker/.env \
   -f docker/docker-compose.yaml \
   -f docker/docker-compose.ec2-http.override.yaml \
   --network actian-net up -d      # or attach pg/redis to the daytona network
 ```
+
 (Datastores + stack must share a network. If pg/redis are on `actian-net`, put the
 stack there too, or publish pg/redis on host ports and point `DB_HOST`/`REDIS_HOST` at
 the host IP.)
 
 ### 5e. Verify — boot AND a real sandbox
+
 Wait for `🚀 Daytona API is running`, then run the acceptance test in
 `docker/CLIENT-INSTALL.md` (create a sandbox, exec, delete). That exercises
 runner + ssh-gateway + proxy on the delivered images — the real proof.
 
 ### 5f. Tear down
+
 ```bash
 docker compose ... down
 docker rm -f pg redis && docker network rm actian-net
 ```
 
 ### How the rehearsal legitimately differs from the client
+
 Datastores (throwaway vs their managed) and access (HTTP-IP vs their HTTPS-domain).
 Images, compose, dex, boot chain, and sandbox lifecycle are identical. Sandbox port
 previews (wildcard subdomains) are the one thing untested over IP.
@@ -245,16 +263,19 @@ installer, and the AGPL source + offer. Client experience:
 tar xzf daytona-<client>-<tag>.bundle.tar.gz && cd daytona-<client>-<tag>
 ./install.sh          # loads images, ~6 prompts, generates secrets, brings up
 ```
+
 No git, no build, no registry access. Point them at `README.txt` (entrypoint) and
 `docker/CLIENT-INSTALL.md` (detail), both inside the bundle.
 
 **Air-gapped WITH an internal registry (e.g. actian):** same offline bundle, but the
 client seeds their own registry once instead of loading on every node — reuses the
 exact channel their other apps already pull from. In the bundle:
+
 ```
 ./seed-registry.sh                                        # loads images.tar, pushes all 10 to their registry
 IMAGE_SOURCE=registry FORK_REGISTRY=<prefix> ./install.sh # on each node — pulls all 10 from their registry
 ```
+
 `seed-registry.sh` retags every image to `<registry>/<namespace>/...` matching the
 `registry` compose override, so all 10 (4 server + 6 third-party) come from
 their registry — no Docker Hub, no vendor ECR. See the "Deploy via your own internal
