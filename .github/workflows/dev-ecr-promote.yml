@@ -51,12 +51,12 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_ACCOUNT_ID: ${{ vars.ECR_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Configure AWS credentials (OIDC, no static keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # main → deploy role (push); other branches → plan role (read-only, push will 403)
           role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
