@@ -14,6 +14,12 @@ name: Mirror Third-Party Images to Dev ECR (OIDC)
 # pull/tag/push loop would silently flatten each image to the runner's arch.
 # This is why the mirror — unlike dev-ecr-oidc.yml — is arch-agnostic.
 #
+# Tag scheme: the SOURCE is pulled at its real upstream tag (dex v2.42.0, …) but
+# the DESTINATION is re-tagged to the unified stack tag (stack_tag, e.g. 1.4.32),
+# so all 10 stack images (4 server + these 6) carry ONE client tag per v1.4.32.md.
+# The compose overrides pull third-party at ${FORK_TAG}, so set the client's
+# FORK_TAG == stack_tag. Re-run this whenever the stack release tag bumps.
+#
 # Onboarding prerequisites are identical to dev-ecr-oidc.yml; see its header.
 #
 # Keep IMAGES in sync with docker/docker-compose.yaml. The script of record is
@@ -22,6 +28,11 @@ name: Mirror Third-Party Images to Dev ECR (OIDC)
 on:
   workflow_dispatch:
     inputs:
+      stack_tag:
+        description: "Unified destination tag for all third-party images (client FORK_TAG, e.g. 1.4.32)."
+        type: string
+        required: true
+        default: "1.4.32"
       dry_run:
         description: "Resolve and print what would be mirrored, without pushing."
         type: boolean
@@ -60,6 +71,7 @@ jobs:
       - name: Mirror images
         env:
           DRY_RUN: ${{ inputs.dry_run }}
+          STACK_TAG: ${{ inputs.stack_tag }}
           PUSH_ALLOWED: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
@@ -83,8 +95,9 @@ jobs:
           for entry in "${IMAGES[@]}"; do
             src="${entry%%|*}"
             repo="${entry##*|}"
-            tag="${src##*:}"
-            dst="${FORK_REGISTRY}/${repo}:${tag}"
+            # Source keeps its real upstream tag; destination is re-tagged to the
+            # unified stack tag so all 10 stack images share ONE client tag.
+            dst="${FORK_REGISTRY}/${repo}:${STACK_TAG}"
 
             if [ "$DRY_RUN" = "true" ] || [ "$PUSH_ALLOWED" != "true" ]; then
               echo "would mirror: $src -> $dst"

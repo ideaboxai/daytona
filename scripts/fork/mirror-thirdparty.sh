@@ -16,12 +16,19 @@
 # what you mirror is whatever they point at right now. That's precisely why the
 # digest is captured below and pinned in the compose override.
 #
+# Tag scheme: the SOURCE is pulled at its real upstream tag (dex v2.42.0, …) but
+# the DESTINATION is re-tagged to the unified stack tag (STACK_TAG, e.g. 1.4.32),
+# so all 10 stack images (4 server + these 6) carry ONE client tag per v1.4.32.md.
+# The compose overrides pull third-party at ${FORK_TAG}, so set the client's
+# FORK_TAG == STACK_TAG.
+#
 # Requires a docker login to the ECR *host* — not the namespace path:
 #   aws ecr get-login-password --region us-east-1 \
 #     | docker login --username AWS --password-stdin 120354378950.dkr.ecr.us-east-1.amazonaws.com
 #
 # Usage:
 #   FORK_REGISTRY=120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core \
+#   STACK_TAG=1.4.32 \
 #     ./scripts/fork/mirror-thirdparty.sh
 set -euo pipefail
 
@@ -29,6 +36,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 FORK_REGISTRY="${FORK_REGISTRY:?Set FORK_REGISTRY, e.g. 120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core (must include the namespace path)}"
+# Unified DEST tag every third-party image lands under, matching the client's FORK_TAG.
+STACK_TAG="${STACK_TAG:-1.4.32}"
 
 # upstream image ref | our repo name
 #
@@ -73,8 +82,8 @@ echo ">> Mirroring ${#IMAGES[@]} third-party images to $FORK_REGISTRY"
 for entry in "${IMAGES[@]}"; do
   src="${entry%%|*}"
   repo="${entry##*|}"
-  tag="${src##*:}"
-  dst="${FORK_REGISTRY}/${repo}:${tag}"
+  # Source keeps its real upstream tag; destination unifies to STACK_TAG.
+  dst="${FORK_REGISTRY}/${repo}:${STACK_TAG}"
 
   echo ">> $src -> $dst"
   docker buildx imagetools create --tag "$dst" "$src"

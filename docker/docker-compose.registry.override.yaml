@@ -16,6 +16,11 @@
 # deliberately irregular — jaeger keeps its org prefix, the others dropped theirs —
 # so keep this file, mirror-thirdparty.sh, and seed-registry.sh in lockstep.
 #
+# Tag: unified to ${FORK_TAG}, same as the 4 server images (ec2-http override). All
+# 10 stack images carry ONE client tag per v1.4.32.md. mirror-thirdparty.sh /
+# dev-ecr-mirror.yml pull each source at its real upstream tag but re-tag the dest
+# to the stack tag, so set FORK_TAG == that stack tag (e.g. 1.4.32).
+#
 # ${FORK_REGISTRY} = registry host + namespace, e.g.
 #   120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core
 #
@@ -29,14 +34,14 @@ name: daytona
 
 services:
   dex:
-    image: ${FORK_REGISTRY}/dex:v2.42.0
+    image: ${FORK_REGISTRY}/dex:${FORK_TAG}
   registry-ui:
-    image: ${FORK_REGISTRY}/docker-registry-ui:main
+    image: ${FORK_REGISTRY}/docker-registry-ui:${FORK_TAG}
   registry:
-    image: ${FORK_REGISTRY}/registry:2.8.2
+    image: ${FORK_REGISTRY}/registry:${FORK_TAG}
   jaeger:
-    image: ${FORK_REGISTRY}/jaegertracing/all-in-one:1.67.0
+    image: ${FORK_REGISTRY}/jaegertracing/all-in-one:${FORK_TAG}
   minio:
-    image: ${FORK_REGISTRY}/minio:latest
+    image: ${FORK_REGISTRY}/minio:${FORK_TAG}
   otel-collector:
-    image: ${FORK_REGISTRY}/opentelemetry-collector-contrib:0.138.0
+    image: ${FORK_REGISTRY}/opentelemetry-collector-contrib:${FORK_TAG}
