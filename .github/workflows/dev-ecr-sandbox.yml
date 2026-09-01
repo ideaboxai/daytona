@@ -3,12 +3,16 @@ name: Build & Push Daytona Sandbox Snapshot to Dev ECR (OIDC)
 # Builds the default sandbox base image (images/daytona-sandbox) and pushes it to
 # ideaboxai-platform-core/daytona-sandbox via GitHub OIDC — no static AWS keys.
 # Companion to dev-ecr-oidc.yml (the four server images); kept SEPARATE because the
-# snapshot versions on its OWN cadence (SNAPSHOT_TAG, default 1.0.2) — it is not
+# snapshot versions on its OWN cadence (SNAPSHOT_TAG, default 1.1.0) — it is not
 # rebuilt on every server release. Same `cicd` environment + deploy-vs-plan role split.
 #
 # Version: a semver MAJOR.MINOR.PATCH snapshot tag (the cluster's Kyverno policy
-# rejects :latest and commit-hash-only tags). Default 1.0.2; override via the
+# rejects :latest and commit-hash-only tags). Default 1.1.0; override via the
 # snapshot_version input. This is the sandbox's own version, NOT the repo VERSION file.
+#
+# 1.1.0 adds crawl4ai (CPD-6762) so `crawl_page` runs in the sandbox instead of the
+# service pod — MINOR, not PATCH: new capability, plus playwright 1.46->1.53 and a
+# psutil major bump (6->7) that crawl4ai's floors force.
 #
 # ⚠ Requires the same onboarding as dev-ecr-oidc.yml (cicd env vars, IAM trust on the
 # deploy/plan roles, push grant on ideaboxai-platform-core/*) AND the
@@ -25,9 +29,9 @@ on:
   workflow_dispatch:
     inputs:
       snapshot_version:
-        description: "Sandbox snapshot tag (semver MAJOR.MINOR.PATCH). Default 1.0.2."
+        description: "Sandbox snapshot tag (semver MAJOR.MINOR.PATCH). Default 1.1.0."
         type: string
-        default: "1.0.2"
+        default: "1.1.0"
 
 permissions:
   id-token: write       # required for OIDC

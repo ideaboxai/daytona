@@ -16,7 +16,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
       # Default sandbox snapshot, auto-registered on first boot (createFromPull).
       # DEFAULT_SNAPSHOT is the friendly name clients reference (e.g.
-      # daytona-sandbox-v1.0.2); DEFAULT_SNAPSHOT_IMAGE is the pull ref it maps to
+      # daytona-sandbox-v1.1.0); DEFAULT_SNAPSHOT_IMAGE is the pull ref it maps to
       # (e.g. a published image in the delivery registry). Set both together, or
       # leave both to fall back to the slim base image.
       - DEFAULT_SNAPSHOT=${DEFAULT_SNAPSHOT:-daytonaio/sandbox:0.5.0-slim}

@@ -3,6 +3,12 @@
 # Regenerate upstream: pip-compile scripts/snapshot_builder/requirements.in \
 #             -o scripts/snapshot_builder/requirements-frozen.txt
 #
+# ⚠ AHEAD OF THE SYNC SOURCE. The crawl4ai block below (and the playwright/psutil
+# floors it forces) comes from the platform's builder.py PACKAGES list, which CPD-6762
+# updated; upstream's requirements-frozen.txt / Dockerfile.snapshot were NOT part of
+# that change and still lack crawl4ai. Do not "re-sync" this file from upstream
+# wholesale — that silently reverts crawl_page's sandbox execution path (CPD-6762).
+#
 # numpy: pinned to 1.x — 2.0 has breaking ABI changes. Test before bumping.
 numpy==1.26.4
 pandas==2.2.3
@@ -28,11 +34,19 @@ pdf2image==1.17.0
 beautifulsoup4==4.12.3
 lxml==5.3.0
 requests==2.32.3
-playwright==1.46.0
+# crawl4ai (CPD-6762): `crawl_page` runs HERE, in the sandbox, instead of the service
+# pod, whose filesystem may be read-only (OSError EROFS at ~/.crawl4ai). crawl4ai 0.7.6
+# requires playwright>=1.49.0 — pip fails to resolve at build time against the old
+# 1.46.0 pin. 1.53.0 matches services/multi_agent's own pin, so the sandbox and the
+# service stay on one browser-automation version.
+playwright==1.53.0
+crawl4ai==0.7.6
 cryptography==43.0.1
 PyJWT==2.9.0
 defusedxml==0.7.1
-psutil==6.0.0
+# psutil bumped from 6.0.0: crawl4ai 0.7.6 requires psutil>=6.1.1. 7.2.2 matches
+# services/multi_agent's own pin, same reasoning as playwright above.
+psutil==7.2.2
 PyYAML==6.0.2
 python-dotenv==1.0.1
 tabulate==0.9.0

@@ -42,7 +42,7 @@ BYOC_DIR="${BYOC_DIR:?Set BYOC_DIR — where byoc-release.sh wrote the source ar
 PLATFORM="${PLATFORM:-linux/amd64}"
 # Copilot sandbox snapshot: friendly name the platform references (DAYTONA_SNAPSHOT_ID)
 # and the version tag of the published image. Overridable at pack time.
-SNAPSHOT_TAG="${SNAPSHOT_TAG:-1.0.2}"
+SNAPSHOT_TAG="${SNAPSHOT_TAG:-1.1.0}"
 SNAPSHOT_NAME="daytona-sandbox-v${SNAPSHOT_TAG}"
 SNAPSHOT_IMAGE="${FORK_REGISTRY}/daytona-sandbox:${SNAPSHOT_TAG}"
 

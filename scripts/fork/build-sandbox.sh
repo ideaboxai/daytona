@@ -37,7 +37,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 FORK_REGISTRY="${FORK_REGISTRY:?Set FORK_REGISTRY, e.g. 120354378950.dkr.ecr.us-east-1.amazonaws.com/ideaboxai-platform-core (must include the namespace path)}"
-SNAPSHOT_TAG="${SNAPSHOT_TAG:-1.0.2}"
+SNAPSHOT_TAG="${SNAPSHOT_TAG:-1.1.0}"
 TARGET_PLATFORM="${TARGET_PLATFORM:-linux/amd64}"
 
 # Build source: vendored copy (default) or a live platform checkout via SNAPSHOT_SRC.
