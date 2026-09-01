@@ -7,7 +7,7 @@ name: Promote Daytona Images to Client Release Namespace (OIDC)
 #
 # Re-tagging: the 10 stack images (4 server + 6 third-party) unify to release_tag
 # (e.g. 1.4.32, per v1.4.32.md). The sandbox versions on its OWN cadence, so it keeps
-# its snapshot_tag (e.g. 1.0.2) — it is NOT swept into release_tag.
+# its snapshot_tag (e.g. 1.1.0) — it is NOT swept into release_tag.
 #
 # ⚠ Needs the OIDC DEPLOY role to be granted ECR push on the DESTINATION namespace
 # (release/<client>/*), in addition to read on platform-core/*. A developer SSO role is
@@ -35,9 +35,9 @@ on:
         required: true
         default: "1.4.32"
       snapshot_tag:
-        description: "Sandbox tag — independent, kept as-is source→dest (e.g. 1.0.2)"
+        description: "Sandbox tag — independent, kept as-is source→dest (e.g. 1.1.0)"
         type: string
-        default: "1.0.2"
+        default: "1.1.0"
 
 permissions:
   id-token: write       # required for OIDC

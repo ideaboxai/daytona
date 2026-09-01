@@ -1,43 +1,86 @@
 # SYNCED-FROM: ideaboxai-multi-agent-service/scripts/snapshot_builder/requirements-frozen.txt @23068a96
-# Frozen: 2026-05-20
+# Frozen: 2026-09-01 (previous set was frozen 2026-05-20)
 # Regenerate upstream: pip-compile scripts/snapshot_builder/requirements.in \
 #             -o scripts/snapshot_builder/requirements-frozen.txt
 #
-# numpy: pinned to 1.x — 2.0 has breaking ABI changes. Test before bumping.
+# ⚠ AHEAD OF THE SYNC SOURCE. The crawl4ai entry (and the playwright/psutil floors it
+# forces) comes from the platform's builder.py PACKAGES list, which CPD-6762 updated;
+# upstream's requirements-frozen.txt / Dockerfile.snapshot were NOT part of that change
+# and still lack crawl4ai. The security refresh below is not upstream either. Do not
+# "re-sync" this file from upstream wholesale — that reverts BOTH crawl_page's sandbox
+# execution path (CPD-6762) and every CVE fix recorded here.
+#
+# SECURITY REFRESH 2026-09-01. The 2026-05-20 set carried known CVEs in 10 packages;
+# every version below was chosen as the lowest release that clears them, then resolved
+# together with `uv pip compile` (133 packages, no conflicts). Scanned via OSV.
+# Re-run before each delivery — this list ships to clients:
+#     uv pip compile <this>.in -o <this>.txt      # conflicts
+#     osv-scanner / pip-audit against the built image   # CVEs
+#
+# Floors that are SECURITY-driven — do not lower without re-checking OSV:
+#   crawl4ai     >=0.9.0   CVE-2026-57572 CRITICAL unauth RCE via Chromium launch-arg
+#                          injection, and CVE-2026-57571 CRITICAL arbitrary file write
+#                          in crawler downloads. Both are on the LIBRARY/browser path
+#                          we use, not only the Docker server.
+#   pillow       >=12.3.0  ~17 CVEs incl. several HIGH heap out-of-bounds writes
+#                          (paste/crop, ImageCmsTransform, RankFilter).
+#   pypdf        >=6.14.2  ~38 CVEs, mostly infinite-loop / RAM-exhaustion DoS.
+#   cryptography >=49.0.0  HIGH vulnerable OpenSSL in wheels (GHSA-537c-gmf6-5ccf,
+#                          48.0.1) + CVE-2026-69249 HIGH, CVE-2026-26007 subgroup attack.
+#   PyJWT        >=2.13.0  CVE-2026-48526 HIGH — public-key JWK accepted as an HMAC
+#                          secret, enabling forged HS256 tokens.
+#   lxml         >=6.1.0   CVE-2026-41066 HIGH — XXE in the DEFAULT iterparse() config.
+#   requests     >=2.33.0  .netrc credential leak + insecure temp-file reuse.
+#   python-dotenv>=1.2.2 / click>=8.3.3 / Pygments>=2.20.0  — lower severity, no cost.
+#
+# REMOVED: pdfkit. It carried CVE-2025-26240 (HIGH, path traversal in from_string) with
+# no fixed release, AND it was never functional here — it shells out to `wkhtmltopdf`,
+# which is not installed in this image (verified: OSError "No wkhtmltopdf executable
+# found"). Its upstream was archived in 2023. Dropping it therefore costs no capability:
+# HTML -> PDF is already available via the Chromium/Playwright baked in below
+# (`page.pdf()`). Do not re-add it without also adding wkhtmltopdf and re-checking OSV.
+#
+# numpy: DELIBERATELY held at 1.x — 2.0 has breaking ABI changes for user code in
+# sandboxes. Verified that holding it does NOT block any security floor above.
+# pandas: held at 2.x for the same reason (3.0 changes copy-on-write and string-dtype
+# defaults). Not security-driven — revisit independently.
 numpy==1.26.4
-pandas==2.2.3
-scipy==1.13.1
-scikit-learn==1.5.2
-matplotlib==3.9.2
+pandas==2.3.3
+scipy==1.17.1
+scikit-learn==1.9.0
+matplotlib==3.11.1
 seaborn==0.13.2
-pillow==10.4.0
-opencv-python-headless==4.10.0.84
-imageio==2.35.1
+pillow==12.3.0
+opencv-python-headless==4.11.0.86
+imageio==2.37.4
 pytesseract==0.3.13
-Wand==0.6.13
-python-docx==1.1.2
+Wand==0.7.2
+python-docx==1.2.0
 python-pptx==1.0.2
 openpyxl==3.1.5
-xlsxwriter==3.2.0
-pypdf==4.3.1
-pdfplumber==0.11.4
-reportlab==4.2.5
-pdfkit==1.0.0
-img2pdf==0.5.1
+xlsxwriter==3.2.9
+pypdf==6.16.2
+pdfplumber==0.11.10
+reportlab==5.0.1
+img2pdf==0.6.3
 pdf2image==1.17.0
-beautifulsoup4==4.12.3
-lxml==5.3.0
-requests==2.32.3
-playwright==1.46.0
-cryptography==43.0.1
-PyJWT==2.9.0
+beautifulsoup4==4.15.0
+lxml==6.1.2
+requests==2.34.2
+# crawl4ai (CPD-6762): `crawl_page` runs HERE, in the sandbox, instead of the service
+# pod, whose filesystem may be read-only (OSError EROFS at ~/.crawl4ai). playwright is
+# pinned above crawl4ai's >=1.49.0 floor; 1.62.0 is current.
+playwright==1.62.0
+crawl4ai==0.9.3
+cryptography==50.0.1
+PyJWT==2.13.0
 defusedxml==0.7.1
-psutil==6.0.0
-PyYAML==6.0.2
-python-dotenv==1.0.1
-tabulate==0.9.0
-sympy==1.13.3
-networkx==3.3
-graphviz==0.20.3
-Pygments==2.18.0
-click==8.1.7
+psutil==7.2.2
+PyYAML==6.0.3
+python-dotenv==1.2.3
+tabulate==0.10.0
+sympy==1.14.0
+networkx==3.6.1
+graphviz==0.21
+Pygments==2.21.0
+click==8.5.0
