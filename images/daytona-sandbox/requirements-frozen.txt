@@ -33,10 +33,12 @@
 #   requests     >=2.33.0  .netrc credential leak + insecure temp-file reuse.
 #   python-dotenv>=1.2.2 / click>=8.3.3 / Pygments>=2.20.0  — lower severity, no cost.
 #
-# ⚠ pdfkit==1.0.0 has CVE-2025-26240 (HIGH, path traversal in from_string) with NO
-# FIXED RELEASE — 1.0.0 is still latest. Kept because dropping it removes an image
-# capability; the sandbox already runs untrusted code, so this is not the boundary
-# that matters. Revisit if pdfkit gains a fix or a maintained replacement.
+# REMOVED: pdfkit. It carried CVE-2025-26240 (HIGH, path traversal in from_string) with
+# no fixed release, AND it was never functional here — it shells out to `wkhtmltopdf`,
+# which is not installed in this image (verified: OSError "No wkhtmltopdf executable
+# found"). Its upstream was archived in 2023. Dropping it therefore costs no capability:
+# HTML -> PDF is already available via the Chromium/Playwright baked in below
+# (`page.pdf()`). Do not re-add it without also adding wkhtmltopdf and re-checking OSV.
 #
 # numpy: DELIBERATELY held at 1.x — 2.0 has breaking ABI changes for user code in
 # sandboxes. Verified that holding it does NOT block any security floor above.
@@ -60,7 +62,6 @@ xlsxwriter==3.2.9
 pypdf==6.16.2
 pdfplumber==0.11.10
 reportlab==5.0.1
-pdfkit==1.0.0
 img2pdf==0.6.3
 pdf2image==1.17.0
 beautifulsoup4==4.15.0

@@ -27,12 +27,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
 # System packages
+# poppler-utils supplies pdftoppm/pdfinfo, which pdf2image shells out to. Without it
+# pdf2image raises PDFInfoNotInstalledError on every call — the package was installed
+# but the capability never worked. (pytesseract/Wand/graphviz have their binaries below.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs npm \
     curl wget git \
     ffmpeg \
     imagemagick \
     tesseract-ocr \
+    poppler-utils \
     graphviz \
     sqlite3 \
     jq \
