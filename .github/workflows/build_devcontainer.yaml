@@ -1,8 +1,23 @@
 name: 'Build devcontainer image'
+
+# MANUAL ONLY on this fork. Upstream runs this on every push to main, but `imageName`
+# below points at ghcr.io/daytonaio/* — UPSTREAM's namespace. This fork authenticates as
+# ${{ github.repository_owner }} (ideaboxai) with its own GITHUB_TOKEN, which cannot push
+# there, so the publish step fails with "skopeo copy failed with 1" every single time:
+# 9 of 9 runs between 2026-07-20 and 2026-09-01 failed, each after building both
+# linux/amd64 AND QEMU-emulated linux/arm64 first — 30-65 minutes of runner time per
+# merge to main, spent on an image that has never once been published.
+#
+# The cost was not just the minutes: it kept a permanent red X on main, which is how a
+# genuine CI failure gets missed. Dropped the push trigger rather than disabling the
+# workflow in the GitHub UI, because a UI toggle is invisible state that no one reading
+# this repo would ever discover.
+#
+# To make it work again rather than just quiet: repoint imageName/cacheFrom to
+# ghcr.io/ideaboxai/daytona-devcontainer (and confirm the token has packages:write on
+# that namespace), then restore the push trigger if the automatic build is wanted.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions: {}
 
