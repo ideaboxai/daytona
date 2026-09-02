@@ -6,8 +6,18 @@ name: Promote Daytona Images to Client Release Namespace (OIDC)
 # (docker buildx imagetools create), so every architecture is preserved.
 #
 # Re-tagging: the 10 stack images (4 server + 6 third-party) unify to release_tag
-# (e.g. 1.4.32, per v1.4.32.md). The sandbox versions on its OWN cadence, so it keeps
-# its snapshot_tag (e.g. 1.1.0) — it is NOT swept into release_tag.
+# (e.g. 1.4.32, per v1.4.32.md). The sandbox versions on its OWN cadence, so it is NOT
+# swept into release_tag — it carries snapshot_tag, or snapshot_dst_tag when the client
+# wants it published under a different number than it has in the build store.
+#
+# Why source and dest are separable for the sandbox: the client-facing tag is sometimes
+# required to match the platform release line (e.g. 1.4.201) while the build store keeps
+# the sandbox's own version (e.g. 1.1.0). The wrong way to reconcile that is to REBUILD
+# the sandbox under the new number — this image is not reproducible (its transitive
+# Python deps, apt packages and npm globals are all unpinned), so a rebuild yields a
+# different digest and a possibly different package set than whatever was tested and
+# scanned. Copying the tested digest to a second tag keeps the delivered artifact
+# bit-identical to the one that passed review. Blank snapshot_dst_tag = same as source.
 #
 # ⚠ Needs the OIDC DEPLOY role to be granted ECR push on the DESTINATION namespace
 # (release/<client>/*), in addition to read on platform-core/*. A developer SSO role is
@@ -35,9 +45,13 @@ on:
         required: true
         default: "1.4.32"
       snapshot_tag:
-        description: "Sandbox tag — independent, kept as-is source→dest (e.g. 1.1.0)"
+        description: "Sandbox SOURCE tag in platform-core (e.g. 1.1.0)"
         type: string
         default: "1.1.0"
+      snapshot_dst_tag:
+        description: "Sandbox DEST tag in the release namespace. Blank = same as snapshot_tag."
+        type: string
+        default: ""
 
 permissions:
   id-token: write       # required for OIDC
@@ -70,12 +84,16 @@ jobs:
           SERVER_TAG: ${{ inputs.server_tag }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+          SNAPSHOT_DST_TAG: ${{ inputs.snapshot_dst_tag }}
           DST_NS: ${{ inputs.dst_namespace }}
         run: |
           set -euo pipefail
           HOST="${ECR_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           SRC="${HOST}/ideaboxai-platform-core"
           DST="${HOST}/${DST_NS}"
+
+          # Blank dest tag means "same as source" — the historical behaviour.
+          SNAPSHOT_DST_TAG="${SNAPSHOT_DST_TAG:-$SNAPSHOT_TAG}"
 
           # repo | SOURCE tag (in platform-core) | DEST tag (in release namespace)
           ENTRIES=(
@@ -89,7 +107,7 @@ jobs:
             "jaegertracing/all-in-one|1.67.0|${RELEASE_TAG}"
             "minio|latest|${RELEASE_TAG}"
             "opentelemetry-collector-contrib|0.138.0|${RELEASE_TAG}"
-            "daytona-sandbox|${SNAPSHOT_TAG}|${SNAPSHOT_TAG}"
+            "daytona-sandbox|${SNAPSHOT_TAG}|${SNAPSHOT_DST_TAG}"
           )
 
           echo "## Promote ${SRC} -> ${DST}" >> "$GITHUB_STEP_SUMMARY"
