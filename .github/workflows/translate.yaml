@@ -1,7 +1,24 @@
 name: GT Translate
+
+# MANUAL ONLY on this fork. Upstream runs this on every push to main to translate
+# apps/docs into other languages for docs.daytona.io. This fork does not publish that
+# docs site and does not hold General Translation credentials, so every run fails
+# immediately: 10 of 10 between 2026-07-21 and 2026-09-02, one per merge.
+#
+# Two separate defects, both needing upstream's account to even test:
+#   1. secrets.GT_API_KEY / GT_PROJECT_ID are unset here, and the action ALSO requires a
+#      distinct `api_key` input that is not passed at all — hence the hard failure
+#      "Error: Input required and not supplied: api_key".
+#   2. `config`, `inline` and `timeout` below are not valid inputs for this pinned action
+#      version, which warns: "Unexpected input(s) 'config', 'inline', 'timeout'". So even
+#      with credentials it would not behave as written.
+#
+# Left in place rather than deleted so the file stays diffable against upstream, but the
+# push trigger is dropped: a workflow that cannot succeed should not be reporting failure
+# on main after every merge. A permanently red main is how a real failure goes unnoticed.
+# To revive it: supply the credentials, fix the inputs above, then restore the trigger.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions: {}
 
