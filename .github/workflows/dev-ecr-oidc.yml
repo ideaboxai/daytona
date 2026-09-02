@@ -93,7 +93,7 @@ jobs:
       # sidesteps a flaky post-job cleanup on the self-hosted runner: the default
       # checkout runs `git submodule foreach` to unset its credential config, which
       # exits non-zero here and marks an otherwise-successful build/push job red.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -119,7 +119,7 @@ jobs:
       # generated at build time — absent in a fresh checkout, so the COPY fails
       # with "failed to calculate checksum of ref". Generate it before building,
       # exactly as upstream's release.yaml does. api is Node-only and skips this.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: matrix.service != 'api'
         with:
           go-version-file: go.work
@@ -152,7 +152,7 @@ jobs:
           test -f dist/libs/computer-use-amd64 || { echo "::error::computer-use build produced no artifact"; exit 1; }
 
       - name: Configure AWS credentials (OIDC, no static keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # main → deploy role (ECR push); other branches → plan role (read-only)
           role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
