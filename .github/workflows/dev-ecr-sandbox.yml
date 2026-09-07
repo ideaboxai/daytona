@@ -51,7 +51,7 @@ jobs:
     steps:
       # persist-credentials: false — authenticates to AWS via OIDC, never writes back
       # to git; also sidesteps the flaky self-hosted post-checkout cleanup.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -65,7 +65,7 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials (OIDC, no static keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # main → deploy role (ECR push); other branches → plan role (read-only build)
           role-to-assume: ${{ github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
